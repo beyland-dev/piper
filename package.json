@@ -1,0 +1,45 @@
+{
+  "name": "agent-runtime",
+  "version": "0.1.0",
+  "description": "Declarative orchestration framework for Pi-driven coding workflows",
+  "type": "module",
+  "bin": {
+    "agent-run": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "agent-run": "tsx src/cli/index.ts"
+  },
+  "keywords": [
+    "agents",
+    "tsx",
+    "workflow",
+    "pi"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "esbuild": "^0.25.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
