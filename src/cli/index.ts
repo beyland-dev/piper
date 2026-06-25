@@ -41,6 +41,7 @@ interface GenerateOptions {
 	verbose: boolean;
 	execute: boolean;
 	dryRunGenerated: boolean;
+	saveOnly: boolean;
 }
 
 type CliOptions =
@@ -78,6 +79,7 @@ Options:
   --print-compiled        Print the bundled workflow module without executing it.
   --harness <name>        Harness to use for workflow generation. Defaults to copilot.
   --output <path>         Generated workflow path. Defaults to generated.piper.ts.
+  --save-only             Save the generated workflow without validating or executing it.
   --execute               Execute the generated workflow after validation.
   --dry-run-generated     Print the generated task tree after validation without executing it.
   -h, --help              Show this help information.
@@ -113,6 +115,7 @@ function parseGenerateArguments(prompt: string, values: string[], cwd: string): 
 	let verbose = true;
 	let execute = false;
 	let dryRunGenerated = false;
+	let saveOnly = false;
 
 	while (values.length > 0) {
 		const current = values.shift();
@@ -158,6 +161,11 @@ function parseGenerateArguments(prompt: string, values: string[], cwd: string): 
 			continue;
 		}
 
+		if (current === "--save-only") {
+			saveOnly = true;
+			continue;
+		}
+
 		if (current === "--dry-run-generated") {
 			dryRunGenerated = true;
 			continue;
@@ -174,6 +182,10 @@ function parseGenerateArguments(prompt: string, values: string[], cwd: string): 
 		throw new Error("--execute and --dry-run-generated cannot be used together");
 	}
 
+	if (saveOnly && (execute || dryRunGenerated)) {
+		throw new Error("--save-only cannot be used with --execute or --dry-run-generated");
+	}
+
 	return {
 		kind: "generate",
 		prompt,
@@ -183,6 +195,7 @@ function parseGenerateArguments(prompt: string, values: string[], cwd: string): 
 		verbose,
 		execute,
 		dryRunGenerated,
+		saveOnly,
 	};
 }
 
@@ -517,6 +530,12 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 				hooks,
 				cliOptions: options,
 			});
+
+			if (parsed.saveOnly) {
+				await access(parsed.outputPath, fsConstants.F_OK);
+				hooks.info(`Generated workflow written to ${parsed.outputPath}`);
+				return 0;
+			}
 
 			const generatedTaskTree = await loadWorkflow(parsed.outputPath);
 			hooks.info(`Generated workflow written to ${parsed.outputPath}`);

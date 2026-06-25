@@ -58,9 +58,10 @@ Piper can also ask one of its configured harnesses to author an inspectable work
 piper "Plan and implement a small bug fix" --workspace . --output workflows/generated.piper.ts
 ```
 
-Generation is an authoring step. Piper asks the selected harness to write a `.piper.ts` file, validates that the file can be loaded as a workflow, and leaves the generated file on disk for review. It does not execute the generated workflow unless you opt in:
+Generation is an authoring step. Piper asks the selected harness to write a `.piper.ts` file, validates that the file can be loaded as a workflow, and leaves the generated file on disk for review. Use `--save-only` to leave the file on disk without loading, validating, or executing it. Piper does not execute the generated workflow unless you opt in:
 
 ```bash
+piper "Draft a release workflow" --save-only
 piper "Plan a migration" --dry-run-generated
 piper "Fix the failing tests" --execute
 ```
