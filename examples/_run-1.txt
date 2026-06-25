@@ -1,0 +1,270 @@
+➜ pnpm run agent-run -- examples/repo-development.agent.tsx --workspace . --verbose
+
+> agent-runtime@0.1.0 agent-run /var/home/hawkticehurst/Documents/programming/projects/agent-framework
+> tsx src/cli/index.ts -- examples/repo-development.agent.tsx --workspace . --verbose
+
+[run] task-1 (pi, attempt 1) Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the agent runtime that can be completed safely in a single pass
+  [task-1] After inspecting `src/`, `tests/`, and `README.md`, I’d pick this as the **smallest high-leverage runtime improvement**:
+  [task-1] 
+  [task-1] ## Chosen improvement
+  [task-1] **Fail fast for unresolved `useOutput(...)` dependencies instead of hanging forever.**
+  [task-1] 
+  [task-1] ### Why this one
+  [task-1] Today, output dependencies can deadlock silently:
+  [task-1] 
+  [task-1] - `src/core/use-output.ts` calls `context.readOutput(name)`
+  [task-1] - `src/runtime/executor.ts` → `OutputStore.waitForOutput()` and `waitForResult()` only ever **resolve**
+  [task-1] - if an output name is wrong, never declared, or its producer task fails before publishing output, the waiter can hang indefinitely
+  [task-1] 
+  [task-1] This is high leverage because it affects the core runtime contract for workflow composition, and the fix is still localized.
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] ## Evidence from the code
+  [task-1] ### Runtime gap
+  [task-1] In `src/runtime/executor.ts`:
+  [task-1] 
+  [task-1] - `OutputStore.set(name, result)` resolves waiters
+  [task-1] - `waitForOutput(name)` and `waitForResult(name)` create promises with no rejection path
+  [task-1] - `executeTask(...)` only calls `this.outputs.set(...)` on success
+  [task-1] - task failure paths do **not** notify waiting consumers
+  [task-1] 
+  [task-1] ### Test gap
+  [task-1] - `tests/use-output.test.ts` covers only the happy path
+  [task-1] - there is no test for:
+  [task-1]   - typoed output names
+  [task-1]   - upstream task failure while another task waits on that output
+  [task-1]   - declared-but-never-produced outputs
+  [task-1] 
+  [task-1] ### Docs gap
+  [task-1] `README.md` explains `output` and `useOutput` conceptually, but does **not** state the runtime requirement:
+  [task-1] 
+  [task-1] > every `useOutput("name")` must match a successful upstream task with `output: "name"`
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] # Plan
+  [task-1] 
+  [task-1] ## Scope
+  [task-1] Limit changes to:
+  [task-1] 
+  [task-1] - `src/runtime/executor.ts`
+  [task-1] - `tests/use-output.test.ts` or a new focused file like `tests/output-dependencies.test.ts`
+  [task-1] - `README.md`
+  [task-1] 
+  [task-1] Avoid broader adapter or CLI changes.
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] ## Follow-up Task 1: Add failing coverage first
+  [task-1] **Goal:** lock in expected behavior before runtime edits.
+  [task-1] 
+  [task-1] ### Files
+  [task-1] - Prefer new file: `tests/output-dependencies.test.ts`
+  [task-1]   - keeps negative-path coverage isolated from current happy-path tests
+  [task-1] 
+  [task-1] ### Add these test cases
+  [task-1] 1. **Unknown output name fails immediately**
+  [task-1]    - workflow contains a task whose `context` includes `useOutput("missing")`
+  [task-1]    - no task declares `output: "missing"`
+  [task-1]    - expect `executor.execute(...)` to reject with a clear error mentioning `missing`
+  [task-1] 
+  [task-1] 2. **Waiting task is released when producer task fails**
+  [task-1]    - use `Suspense(...)`
+  [task-1]    - one child task declares `output: "plan"` and fails
+  [task-1]    - another child task waits on `useOutput("plan")`
+  [task-1]    - expect execution to fail promptly, not hang
+  [task-1] 
+  [task-1] 3. **Error message is actionable**
+  [task-1]    - assert message includes a fix hint like:
+  [task-1]      - unknown output name
+  [task-1]      - or producer failed before output was produced
+  [task-1] 
+  [task-1] ### Notes
+  [task-1] - Use `MockAdapter` for all cases
+  [task-1] - For failure case, prefer `resolveBehavior` so attempt behavior is explicit and local to the test
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] ## Follow-up Task 2: Implement output dependency failure propagation
+  [task-1] **Goal:** make `OutputStore` reject impossible waits.
+  [task-1] 
+  [task-1] ### Primary file
+  [task-1] - `src/runtime/executor.ts`
+  [task-1] 
+  [task-1] ### Concrete changes
+  [task-1] 1. **Teach `OutputStore` about pending/rejected states**
+  [task-1]    - replace waiter arrays of bare `resolve` callbacks with waiter records containing:
+  [task-1]      - `resolve`
+  [task-1]      - `reject`
+  [task-1] 
+  [task-1] 2. **Track declared output names**
+  [task-1]    - before execution starts, walk the normalized tree and collect all `task.props.output` names
+  [task-1]    - store them in `OutputStore`
+  [task-1] 
+  [task-1] 3. **Reject undeclared output lookups immediately**
+  [task-1]    - in `waitForOutput(name)` / `waitForResult(name)`, if `name` was never declared:
+  [task-1]      - reject with an `Error`
+  [task-1]      - message should mention the missing output name and suggest adding/fixing `output: "<name>"`
+  [task-1] 
+  [task-1] 4. **Propagate producer failure to waiters**
+  [task-1]    - when a task with `node.props.output` fails permanently:
+  [task-1]      - notify the `OutputStore` that this named output failed
+  [task-1]      - reject all waiters for that name with a clear error
+  [task-1] 
+  [task-1] 5. **Close outstanding waiters when execution aborts**
+  [task-1]    - after `execute(...)` finishes or throws, reject any still-pending declared outputs
+  [task-1]    - this prevents lingering promises in concurrent branches
+  [task-1] 
+  [task-1] ### Suggested error wording
+  [task-1] Keep messages stable enough for tests.
+  [task-1] 
+  [task-1] Examples:
+  [task-1] - `Unknown output "plan". No task declares output="plan".`
+  [task-1] - `Output "plan" was not produced because its task failed.`
+  [task-1] 
+  [task-1] ### Implementation note
+  [task-1] This can stay entirely inside `src/runtime/executor.ts`; no public API changes are required.
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] ## Follow-up Task 3: Document the contract in README
+  [task-1] **Goal:** make the behavior discoverable for workflow authors.
+  [task-1] 
+  [task-1] ### File
+  [task-1] - `README.md`
+  [task-1] 
+  [task-1] ### Additions
+  [task-1] In either **Example** or **Mental model**, add a short note:
+  [task-1] 
+  [task-1] - `output: "name"` publishes a task result
+  [task-1] - `useOutput("name")` waits for that published output
+  [task-1] - if no task declares that output, or the producing task fails, execution now fails with a clear runtime error
+  [task-1] 
+  [task-1] ### Optional mini-example
+  [task-1] A 3–5 line snippet showing:
+  [task-1] - upstream task with `output: "plan"`
+  [task-1] - downstream task using `context={[useOutput("plan")]}`
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] # Validation guidance
+  [task-1] 
+  [task-1] ## Targeted validation
+  [task-1] Because there is already an unrelated red baseline in `tests/error-boundary.test.ts`, use targeted commands first.
+  [task-1] 
+  [task-1] ### Run
+  [task-1] ```bash
+  [task-1] pnpm test -- tests/use-output.test.ts tests/suspense.test.ts tests/end-to-end.test.ts
+  [task-1] ```
+  [task-1] 
+  [task-1] If you add a new file:
+  [task-1] ```bash
+  [task-1] pnpm test -- tests/output-dependencies.test.ts tests/use-output.test.ts tests/suspense.test.ts
+  [task-1] ```
+  [task-1] 
+  [task-1] Then:
+  [task-1] ```bash
+  [task-1] pnpm typecheck
+  [task-1] ```
+  [task-1] 
+  [task-1] ## Full-suite note
+  [task-1] `pnpm test` currently shows an existing failure in:
+  [task-1] - `tests/error-boundary.test.ts`
+  [task-1] 
+  [task-1] That should be treated as **pre-existing** unless this work intentionally touches error-boundary semantics.
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] # Acceptance criteria
+  [task-1] The improvement is done when all of these are true:
+  [task-1] 
+  [task-1] 1. A typoed `useOutput("...")` fails quickly with a clear message
+  [task-1] 2. A task waiting on an output from a failed producer does not hang
+  [task-1] 3. Existing happy-path `useOutput` behavior still passes
+  [task-1] 4. README states the `output` / `useOutput` contract explicitly
+  [task-1] 5. `pnpm typecheck` passes
+  [task-1] 
+  [task-1] ---
+  [task-1] 
+  [task-1] # Why this is safer than other options
+  [task-1] Compared with changing retry behavior, adapter semantics, or `ErrorBoundary`, this is:
+  [task-1] 
+  [task-1] - more localized
+  [task-1] - easier to test deterministically
+  [task-1] - less likely to change public execution semantics beyond fixing a hang
+  [task-1] - immediately useful for anyone writing TSX workflows with dependencies
+  [task-1] 
+  [task-1] If you want, I can turn this into a task-by-task checklist with exact test skeletons next.
+[done] task-1 After inspecting `src/`, `tests/`, and `README.md`, I’d pick this as the **smallest high-leverage r…
+[info] Preparing a focused improvement plan for the repository...
+[run] task-2 (pi, attempt 1) Implement the planned improvement, keeping the change narrow and adding or updating focused tests
+  [task-2] Implemented the runtime fix narrowly.
+  [task-2] 
+  [task-2] Changed:
+  [task-2] - `src/runtime/executor.ts`
+  [task-2] - `tests/output-dependencies.test.ts`
+  [task-2] - `README.md`
+  [task-2] 
+  [task-2] What changed:
+  [task-2] - `OutputStore` now tracks:
+  [task-2]   - declared outputs
+  [task-2]   - pending producers
+  [task-2]   - waiter `resolve` + `reject`
+  [task-2]   - failed output states
+  [task-2] - `useOutput("name")` now fails immediately for undeclared outputs with:
+  [task-2]   - `Unknown output "name". No task declares output="name". Add or fix output="name" on an upstream task.`
+  [task-2] - when a task with `output` fails permanently, waiters on that output are rejected with:
+  [task-2]   - `Output "name" was not produced because its task failed.`
+  [task-2] - executor now pre-collects declared outputs before execution
+  [task-2] - executor closes pending output waits when execution ends/aborts
+  [task-2] - README now documents the `output` / `useOutput` contract
+  [task-2] 
+  [task-2] Tests added:
+  [task-2] - `tests/output-dependencies.test.ts`
+  [task-2]   - undeclared output fails fast
+  [task-2]   - undeclared output message includes fix hint
+  [task-2]   - failed producer causes waiting output lookup to reject clearly
+  [task-2] 
+  [task-2] Validation:
+  [task-2] - `pnpm exec vitest run tests/output-dependencies.test.ts tests/use-output.test.ts tests/suspense.test.ts tests/end-to-end.test.ts` ✅
+  [task-2] - `pnpm typecheck` ✅
+  [task-2] 
+  [task-2] Note:
+  [task-2] - Running `pnpm test -- ...` still surfaced the pre-existing failure in `tests/error-boundary.test.ts`, as expected from your baseline note.
+[done] task-2 Implemented the runtime fix narrowly.
+
+Changed:
+- `src/runtime/executor.ts`
+- `tests/output-depende…
+[run] task-3 (pi, attempt 1) Update README guidance only if the implemented improvement changes how maintainers should author or run workflows
+  [task-3] Yes — this change merits a README update.
+  [task-3] 
+  [task-3] Why:
+  [task-3] - it changes observable runtime behavior for workflow authors
+  [task-3] - `useOutput("name")` no longer only “waits”; it can now fail fast for:
+  [task-3]   - undeclared outputs
+  [task-3]   - failed producers
+  [task-3]   - never-produced outputs
+  [task-3] 
+  [task-3] So the README should document the `output` / `useOutput` contract, but only that contract. No command or maintainer-process guidance needs to change.
+  [task-3] 
+  [task-3] What’s appropriate in `README.md`:
+  [task-3] - a short example showing `output="plan"` + `useOutput("plan")`
+  [task-3] - one sentence that unresolved dependencies now fail with a clear runtime error
+  [task-3] 
+  [task-3] What’s not needed:
+  [task-3] - changes to install/run commands
+  [task-3] - broader maintainer workflow guidance
+  [task-3] - CLI or adapter docs
+  [task-3] 
+  [task-3] Based on the diff, the current README addition is the right scope:
+  [task-3] - `README.md` documents explicit output dependencies
+  [task-3] - it explains the new failure behavior
+  [task-3] - it does not over-document internal executor details
+  [task-3] 
+  [task-3] So: keep the README change, but keep it limited exactly as you have it.
+[done] task-3 Yes — this change merits a README update.
+
+Why:
+- it changes observable runtime behavior for workfl…

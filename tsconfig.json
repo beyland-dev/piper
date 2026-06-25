@@ -19,6 +19,6 @@
     },
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "automations/repo-development.agent.tsx"],
   "exclude": ["dist"]
 }
