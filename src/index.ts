@@ -1,3 +1,5 @@
+export { parallel, protect, recover, sequence, task, workflow } from "./core/builder.js";
+export type { ParallelOptions, ProtectOptions, RecoverOptions } from "./core/builder.js";
 export { Task } from "./core/task.js";
 export { Parallel } from "./core/parallel.js";
 export { Recover } from "./core/recover.js";

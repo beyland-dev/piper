@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Task, WorkflowExecutor, output } from "../src/index.js";
+import { MockAdapter, WorkflowExecutor, output, task } from "../src/index.js";
 
 describe("output", () => {
   const directories: string[] = [];
@@ -35,8 +35,8 @@ describe("output", () => {
     });
 
     await executor.execute([
-      Task({ goal: "Create plan", agent: "mock", output: "plan" }),
-      Task({ goal: "Implement feature", agent: "mock", context: [output("plan")] })
+      task({ goal: "Create plan", agent: "mock", output: "plan" }),
+      task({ goal: "Implement feature", agent: "mock", context: [output("plan")] })
     ]);
 
     const downstreamAttempt = adapter.history.find((entry) => entry.goal === "Implement feature");

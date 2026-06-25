@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Protect, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, WorkflowExecutor, protect, task } from "../src/index.js";
 
 async function createGitWorkspace(): Promise<string> {
   const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-protect-"));
@@ -61,10 +61,10 @@ describe("Protect", () => {
     });
 
     await executor.execute(
-      Protect({
-        protectedFiles: ["auth_legacy.ts"],
-        children: [Task({ goal: "Review task", agent: "mock" })]
-      })
+      protect(
+        { protectedFiles: ["auth_legacy.ts"] },
+        task({ goal: "Review task", agent: "mock" })
+      )
     );
 
     const protectedFile = await readFile(join(workspacePath, "auth_legacy.ts"), "utf8");

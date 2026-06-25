@@ -4,29 +4,20 @@
 
 This repo is a small runtime for agent workflows.
 
-You write a workflow in TSX.
-The CLI compiles that TSX file.
-The compiled code returns a plain object tree.
-The executor walks that tree.
-When it hits a task, it calls an adapter.
-The adapter starts an external agent command such as `pi`.
+You write a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The executor walks that tree. When it hits a task, it calls an adapter. The adapter starts an external agent command such as `pi`.
 
 That is the whole shape of the system.
 
-There is no secret boss agent in this repo.
-There is no LLM inside this framework deciding what to do next.
-The framework itself is the orchestrator, and it does that with normal TypeScript and JavaScript control flow.
+There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. The framework itself is the orchestrator, and it does that with normal TypeScript and JavaScript control flow.
 
-## What the TSX really is
+## What the builder API really is
 
-The TSX is not a UI.
-It is not React running in a browser.
-It is just a nice way to build a task tree.
+The builder API is a typed way to build a task tree.
 
 When you write this:
 
-```tsx
-<Task goal="Inspect the repo" agent="pi" />
+```ts
+task({ goal: "Inspect the repo", agent: "pi" })
 ```
 
 you are really creating a plain object that says, in effect:
@@ -35,9 +26,7 @@ you are really creating a plain object that says, in effect:
 { kind: "task", props: { goal: "Inspect the repo", agent: "pi" } }
 ```
 
-The JSX runtime in `src/jsx-runtime.ts` just turns components and fragments into task nodes.
-It does not talk to a model.
-It does not schedule work by itself.
+The builders in `src/core/builder.ts` create task nodes. They do not talk to a model. They do not schedule work by themselves.
 
 ## The actual runtime flow
 
@@ -70,18 +59,6 @@ Its job is to:
 
 It is glue code.
 
-### `src/jsx-runtime.ts`
-
-This is the TSX translator layer.
-
-Its job is to:
-
-1. accept TSX component calls
-2. turn fragments into sequences
-3. call component functions like `Task`, `Parallel`, `Protect`, and `Recover`
-
-It does not execute tasks.
-
 ### `src/core`
 
 This folder defines the language of the workflow.
@@ -89,24 +66,22 @@ This folder defines the language of the workflow.
 It contains:
 
 1. node types
-2. helper components like `Task`, `Parallel`, `Protect`, and `Recover`
+2. builder functions like `task`, `sequence`, `parallel`, `protect`, and `recover`
 3. signal helpers like `output` and `derive`
 
-This layer describes work.
-It does not perform the work.
+This layer describes work. It does not perform the work.
 
 ### `src/runtime`
 
 This is the engine.
 
-`WorkflowExecutor` is the center of the repo.
-It is the code that actually decides how the tree runs.
+`WorkflowExecutor` is the center of the repo. It is the code that actually decides how the tree runs.
 
 Its job is to:
 
 1. walk the tree
 2. run sequence nodes in order
-3. run `Parallel` children in parallel
+3. run `parallel` children concurrently
 4. handle retries for failed tasks
 5. enforce protected file constraints
 6. run validations
@@ -118,9 +93,7 @@ This is the part that acts like an orchestrator, but it is just imperative code.
 
 Adapters are the bridge to real agents.
 
-The important point is this:
-the framework does not contain the agent brain.
-The adapter hands work off to something else.
+The important point is this: the framework does not contain the agent brain. The adapter hands work off to something else.
 
 For `PiAdapter`, that means:
 
@@ -140,7 +113,7 @@ This is where process spawning, shell escaping, async queues, and deferred promi
 
 ## What the workflow features actually mean
 
-### `Task`
+### `task`
 
 One unit of agent work.
 
@@ -151,7 +124,7 @@ It says:
 3. what extra context to pass
 4. what validations to run after it finishes
 
-### `useOutput` and `computed`
+### `output` and `derive`
 
 These let later tasks depend on earlier tasks.
 
@@ -159,18 +132,19 @@ These let later tasks depend on earlier tasks.
 
 `derive(...)` means "run a little function at runtime to build a context string or validation value."
 
-### `Parallel`
+### `sequence`
 
-In this repo, `Parallel` means:
+Run child nodes in order.
 
-1. show a fallback message or fallback node
-2. run child tasks in parallel
+### `parallel`
 
-### `Recover`
+Run child nodes concurrently. It can also show a fallback message or run a fallback node while the parallel work is in progress.
+
+### `recover`
 
 Catch a failure, run fallback logic, and optionally retry.
 
-### `Protect`
+### `protect`
 
 Run tasks with extra safety rules.
 
@@ -178,16 +152,11 @@ This is where you can say certain files must not be changed, and where extra val
 
 ## What this framework is not
 
-It is not a general autonomous planner.
-It is not a scheduler backed by a hidden LLM.
-It is not a multi-agent system by itself.
-It is not React, except in syntax style.
-
-It is a deterministic workflow runner with a TSX authoring layer.
+It is not a general autonomous planner. It is not a scheduler backed by a hidden LLM. It is not a multi-agent system by itself. It is a deterministic workflow runner with a TypeScript builder authoring layer.
 
 ## How to read an example workflow
 
-Take `examples/migration-playbook.agent.tsx`.
+Take `examples/migration-playbook.agent.ts`.
 
 In plain words it says:
 
@@ -195,22 +164,18 @@ In plain words it says:
 2. run two follow-up planning tasks in parallel
 3. combine those results into one playbook
 4. validate that the playbook mentions certain things
-5. run a guarded review step that must respect protected files
+5. run a protected review step that must respect protected files
 
-That file is not doing the work directly.
-It is describing the work so the executor can do it.
+That file is not doing the work directly. It is describing the work so the executor can do it.
 
 ## The most important mental model
 
 Think of this repo in two layers.
 
-Layer 1 is the workflow description.
-That is the TSX you write.
+Layer 1 is the workflow description. That is the TypeScript builder tree you write.
 
-Layer 2 is the runtime engine.
-That is the executor plus adapters.
+Layer 2 is the runtime engine. That is the executor plus adapters.
 
-The workflow description says what should happen.
-The runtime engine makes it happen.
+The workflow description says what should happen. The runtime engine makes it happen.
 
 The actual coding agent, if there is one, starts outside this repo when an adapter launches a command like `pi`.

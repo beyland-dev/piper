@@ -2,9 +2,7 @@
 
 Small TypeScript runtime for agent workflows.
 
-You write workflows in TSX.
-This project compiles them into a task tree and runs that tree with normal JavaScript control flow.
-When a task needs real agent work, an adapter launches an external command such as `pi`.
+You write workflows with a TypeScript builder API. The builder creates a task tree and the runtime executes that tree with normal JavaScript control flow. When a task needs real agent work, an adapter launches an external command such as `pi`.
 
 If you want the blunt architecture explanation, read [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -12,18 +10,17 @@ If you want the blunt architecture explanation, read [ARCHITECTURE.md](ARCHITECT
 
 This project gives you:
 
-1. a TSX authoring model for workflows
+1. a TypeScript builder authoring model for workflows
 2. a runtime that executes tasks, retries failures, and stores outputs
 3. adapters that hand tasks off to external agents
 4. validation and guard rails for protected files and post-task checks
 
-This project does not contain the actual coding agent logic.
-That lives in the external command invoked by an adapter.
+This project does not contain the actual coding agent logic. That lives in the external command invoked by an adapter.
 
 ## Project layout
 
 1. `src/cli`: CLI entry point for compiling and running workflows
-2. `src/core`: task node types and helper components like `Task` and `Protect`
+2. `src/core`: task node types and builder primitives like `task`, `parallel`, `protect`, and `recover`
 3. `src/runtime`: the executor and runtime checks
 4. `src/adapters`: bridges to external agents like `pi`
 5. `examples`: sample workflows
@@ -41,7 +38,7 @@ pnpm install
 pnpm build
 pnpm typecheck
 pnpm test
-pnpm run agent-run -- examples/simple-task.agent.tsx --workspace . --verbose
+pnpm run agent-run -- examples/simple-task.agent.ts --workspace . --verbose
 ```
 
 ## Example
@@ -51,27 +48,31 @@ Example workflows live in `examples/`.
 To run one:
 
 ```bash
-pnpm run agent-run -- examples/simple-task.agent.tsx --workspace .
+pnpm run agent-run -- examples/simple-task.agent.ts --workspace .
 ```
 
 Output dependencies are explicit:
 
-```tsx
-<Task goal="Create plan" agent="mock" output="plan" />
-<Task goal="Implement feature" agent="mock" context={[output("plan")]} />
+```ts
+import { output, sequence, task } from "agent-runtime";
+
+export default sequence(
+  task({ goal: "Create plan", agent: "mock", output: "plan" }),
+  task({ goal: "Implement feature", agent: "mock", context: [output("plan")] })
+);
 ```
 
-`output="plan"` publishes that task result.
-`output("plan")` waits for it.
-If no task declares that output, or the producing task fails before publishing it, execution fails with a clear runtime error.
+`output="plan"` publishes that task result. `output("plan")` waits for it. If no task declares that output, or the producing task fails before publishing it, execution fails with a clear runtime error.
 
 ## Mental model
 
 Think about the system like this:
 
-1. TSX describes the workflow
+1. TypeScript builders describe the workflow
 2. the CLI compiles and loads it
 3. the executor runs the workflow tree
 4. adapters launch the real agent command
+
+Use `sequence(...)` for ordered work, `parallel(...)` for concurrent work, `protect(...)` for protected-file scopes, and `recover(...)` for fallback/retry behavior.
 
 If you need more detail, use [ARCHITECTURE.md](ARCHITECTURE.md).

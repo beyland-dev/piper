@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Parallel, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, WorkflowExecutor, parallel, task } from "../src/index.js";
 
 describe("Parallel", () => {
   const directories: string[] = [];
@@ -32,12 +32,10 @@ describe("Parallel", () => {
 
     const start = Date.now();
     await executor.execute(
-      Parallel({
-        children: [
-          Task({ goal: "Task A", agent: "mock" }),
-          Task({ goal: "Task B", agent: "mock" })
-        ]
-      })
+      parallel(
+        task({ goal: "Task A", agent: "mock" }),
+        task({ goal: "Task B", agent: "mock" })
+      )
     );
     const elapsed = Date.now() - start;
 

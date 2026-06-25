@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, WorkflowExecutor, task } from "../src/index.js";
 
 describe("Task", () => {
   const directories: string[] = [];
@@ -32,7 +32,7 @@ describe("Task", () => {
     });
 
     const summary = await executor.execute(
-      Task({
+      task({
         goal: "Create a plan",
         agent: "mock",
         output: "plan"
