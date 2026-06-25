@@ -274,6 +274,52 @@ describe("CLI end-to-end", () => {
 		}
 	});
 
+	it("treats generate as a prompt instead of a subcommand", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
+		directories.push(workspacePath);
+		const outputPath = join(workspacePath, "generated.piper.ts");
+
+		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
+		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+
+		try {
+			let stdout = "";
+			let stderr = "";
+			const exitCode = await runCli(
+				[
+					"generate",
+					"--workspace",
+					workspacePath,
+					"--output",
+					outputPath,
+					"--dry-run-generated",
+				],
+				{
+					stdout: createBufferStream((chunk) => {
+						stdout += chunk;
+					}),
+					stderr: createBufferStream((chunk) => {
+						stderr += chunk;
+					}),
+				},
+			);
+
+			const generated = await readFile(outputPath, "utf8");
+
+			expect(exitCode).toBe(0);
+			expect(stderr).toBe("");
+			expect(generated).toContain('goal: "Generated task"');
+			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
+			expect(stdout).toContain("[info] Generated workflow dry run");
+		} finally {
+			if (previousTemplate === undefined) {
+				delete process.env.COPILOT_COMMAND_TEMPLATE;
+			} else {
+				process.env.COPILOT_COMMAND_TEMPLATE = previousTemplate;
+			}
+		}
+	});
+
 	it("accepts a leading argument separator before the workflow path", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);

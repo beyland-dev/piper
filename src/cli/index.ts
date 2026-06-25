@@ -209,15 +209,6 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 		return { kind: "help" };
 	}
 
-	if (firstArg === "generate") {
-		const prompt = values.shift();
-		if (!prompt || prompt === "-h" || prompt === "--help") {
-			return { kind: "help" };
-		}
-
-		return parseGenerateArguments(prompt, values, cwd);
-	}
-
 	if (!isWorkflowPathArgument(firstArg, cwd)) {
 		return parseGenerateArguments(firstArg, values, cwd);
 	}
