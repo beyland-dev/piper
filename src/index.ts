@@ -1,12 +1,12 @@
-export { parallel, protect, recover, sequence, task, workflow } from "./core/builder.js";
+export { parallel, protect, recover, task, workflow } from "./core/builder.js";
 export type { ParallelOptions, ProtectOptions, RecoverOptions } from "./core/builder.js";
 export { Task } from "./core/task.js";
 export { Parallel } from "./core/parallel.js";
 export { Recover } from "./core/recover.js";
 export { Protect } from "./core/protect.js";
-export { derive, isSignal, output } from "./core/output.js";
+export { artifact, isArtifact, isRuntimeValue, runtimeValue } from "./core/output.js";
 export type {
-  AgentAdapter,
+  HarnessAdapter,
   ContextValue,
   ExecutionSummary,
   ExecutorOptions,
@@ -17,10 +17,11 @@ export type {
   ProtectProps,
   RecoverNode,
   RecoverProps,
-  RuntimeReporter,
-  SequenceNode,
-  Signal,
-  SignalRuntimeContext,
+  Artifact,
+  ArtifactStorageOptions,
+  RuntimeHooks,
+  RuntimeValue,
+  RuntimeValueContext,
   TaskAttemptInfo,
   TaskError,
   TaskHandle,
@@ -28,11 +29,12 @@ export type {
   TaskProps,
   TaskResult,
   TaskTree,
-  ValidationValue
+  ValidationValue,
+  WorkflowNode
 } from "./core/types.js";
-export { MockAdapter } from "./adapters/mock-adapter.js";
-export { PiAdapter } from "./adapters/pi-adapter.js";
-export type { PiAdapterOptions } from "./adapters/pi-adapter.js";
-export { CopilotCliAdapter } from "./adapters/copilot-cli-adapter.js";
-export type { CopilotCliAdapterOptions } from "./adapters/copilot-cli-adapter.js";
-export { WorkflowExecutor } from "./runtime/executor.js";
+export { MockHarness } from "./adapters/mock-adapter.js";
+export { PiHarness } from "./adapters/pi-adapter.js";
+export type { PiHarnessOptions } from "./adapters/pi-adapter.js";
+export { CopilotCliHarness } from "./adapters/copilot-cli-adapter.js";
+export type { CopilotCliHarnessOptions } from "./adapters/copilot-cli-adapter.js";
+export { PiperOrchestrator } from "./runtime/executor.js";

@@ -1,4 +1,4 @@
-import { output, task } from "piper";
+import { artifact, task } from "piper";
 
 import { withImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
 import { withRiskReview } from "./shared-tasks/with-risk-review.js";
@@ -14,21 +14,21 @@ export default function composableOAuthWorkflow() {
       steps: withImplementationPlan({
         planningGoal: "Create a shared implementation plan for an OAuth login and token refresh rollout",
         planOutput: "oauth-plan",
-        fallback: "Using the OAuth plan to coordinate endpoint work...",
+        status: "Using the OAuth plan to coordinate endpoint work...",
         steps: [
           task({
             goal: "Add the OAuth login endpoint and callback handling",
-            agent: "pi",
+            harness: "pi",
             context: [
-              output("oauth-plan"),
+              artifact("oauth-plan").value(),
               "Preserve existing session semantics and redirect behavior."
             ]
           }),
           task({
             goal: "Add the OAuth token refresh endpoint and related validation",
-            agent: "pi",
+            harness: "pi",
             context: [
-              output("oauth-plan"),
+              artifact("oauth-plan").value(),
               "Keep refresh token handling compatible with the rollout plan."
             ]
           })

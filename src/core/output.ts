@@ -1,39 +1,69 @@
-import type { MaybePromise, Signal, SignalRuntimeContext } from "./types.js";
+import type { Artifact, MaybePromise, RuntimeValue, RuntimeValueContext, TaskResult } from "./types.js";
 
-const SIGNAL_MARKER = Symbol.for("piper.signal");
+const RUNTIME_VALUE_MARKER = Symbol.for("piper.runtime-value");
+const ARTIFACT_MARKER = Symbol.for("piper.artifact");
 
-type InternalSignal<T> = Signal<T> & {
-  readonly [SIGNAL_MARKER]: true;
+type InternalRuntimeValue<T> = RuntimeValue<T> & {
+  readonly [RUNTIME_VALUE_MARKER]: true;
 };
 
-function createSignal<T>(
+type InternalArtifact<Name extends string = string> = Artifact<Name> & {
+  readonly [ARTIFACT_MARKER]: true;
+};
+
+function createRuntimeValue<T>(
   description: string,
-  resolver: (context: SignalRuntimeContext) => MaybePromise<T>
-): Signal<T> {
+  resolver: (context: RuntimeValueContext) => MaybePromise<T>,
+  dependencies: readonly string[] = []
+): RuntimeValue<T> {
   return {
-    kind: "signal",
+    kind: "runtime-value",
     description,
+    dependencies,
     resolve: resolver,
-    [SIGNAL_MARKER]: true
-  } as InternalSignal<T>;
+    [RUNTIME_VALUE_MARKER]: true
+  } as InternalRuntimeValue<T>;
 }
 
-export function isSignal(value: unknown): value is Signal<unknown> {
+export function isRuntimeValue(value: unknown): value is RuntimeValue<unknown> {
   return (
     typeof value === "object" &&
     value !== null &&
-    (value as Partial<InternalSignal<unknown>>).kind === "signal" &&
-    typeof (value as Partial<InternalSignal<unknown>>).resolve === "function"
+    (value as Partial<InternalRuntimeValue<unknown>>).kind === "runtime-value" &&
+    typeof (value as Partial<InternalRuntimeValue<unknown>>).resolve === "function"
   );
 }
 
-export function output(name: string): Signal<string> {
-  return createSignal(`output(${name})`, (context) => context.readOutput(name));
+export function isArtifact(value: unknown): value is Artifact {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Partial<InternalArtifact>).kind === "artifact" &&
+    typeof (value as Partial<InternalArtifact>).name === "string"
+  );
 }
 
-export function derive<T>(
-  resolver: (context: SignalRuntimeContext) => MaybePromise<T>,
-  description = "derive"
-): Signal<T> {
-  return createSignal(description, resolver);
+export function getArtifactName(artifact: string | Artifact): string {
+  return typeof artifact === "string" ? artifact : artifact.name;
+}
+
+export function artifact<Name extends string>(name: Name): Artifact<Name> {
+  const value = createRuntimeValue(`artifact value(${name})`, (context) => context.readArtifact(name), [name]);
+  const result = createRuntimeValue<TaskResult>(`artifact result(${name})`, (context) => context.readTaskResult(name), [name]);
+
+  return {
+    kind: "artifact",
+    name,
+    value: () => value,
+    result: () => result,
+    [ARTIFACT_MARKER]: true
+  } as InternalArtifact<Name>;
+}
+
+export function runtimeValue<T>(
+  resolver: (context: RuntimeValueContext) => MaybePromise<T>,
+  description = "runtimeValue",
+  dependencies: readonly string[] = []
+): RuntimeValue<T> {
+  return createRuntimeValue(description, resolver, dependencies);
 }

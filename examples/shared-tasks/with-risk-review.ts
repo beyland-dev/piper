@@ -1,4 +1,4 @@
-import { derive, protect, sequence, task, type TaskNode } from "piper";
+import { runtimeValue, protect, workflow, task, type TaskNode } from "piper";
 
 interface WithRiskReviewProps {
   protectedFiles: string[];
@@ -17,22 +17,22 @@ export function withRiskReview({
     {
       protectedFiles,
       validate: [
-        derive(async ({ readOutput }) => {
-          const review = (await readOutput(reviewOutput)).toLowerCase();
+        runtimeValue(async ({ readArtifact }) => {
+          const review = (await readArtifact(reviewOutput)).toLowerCase();
           return review.includes("risk") || review.includes("rollback") || review.includes("follow-up");
         }, `${reviewOutput} captures risk guidance`)
       ]
     },
-    sequence(
+    workflow(
       steps,
       task({
         goal: reviewGoal,
-        agent: "pi",
+        harness: "pi",
         context: [
           "Focus on production risk, rollback gaps, and any follow-up work that should be ticketed.",
           "Keep protected files unchanged while performing the review."
         ],
-        output: reviewOutput
+        artifact: reviewOutput
       })
     )
   );

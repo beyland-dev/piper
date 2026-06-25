@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CopilotCliAdapter } from "../src/index.js";
+import { CopilotCliHarness } from "../src/index.js";
 
-describe("CopilotCliAdapter", () => {
+describe("CopilotCliHarness", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -17,7 +17,7 @@ describe("CopilotCliAdapter", () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
     directories.push(workspacePath);
 
-    const adapter = new CopilotCliAdapter({
+    const adapter = new CopilotCliHarness({
       commandTemplate:
         'node -e "console.log(process.env.COPILOT_GOAL); console.log(process.env.COPILOT_CONTEXT); console.log(process.env.AGENT_WORKSPACE)"'
     });
@@ -33,11 +33,32 @@ describe("CopilotCliAdapter", () => {
     });
   });
 
+  it("passes model selection through templates and task environment", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
+    directories.push(workspacePath);
+
+    const adapter = new CopilotCliHarness({
+      commandTemplate:
+        'node -e "console.log(process.env.COPILOT_MODEL); console.log(process.env.AGENT_MODEL); console.log({model})"'
+    });
+
+    const handle = adapter.startTask({
+      goal: "Create a plan",
+      model: "gpt-5.4",
+      context: [],
+      workspacePath
+    });
+
+    await expect(handle.completed).resolves.toMatchObject({
+      output: "gpt-5.4\ngpt-5.4\ngpt-5.4"
+    });
+  });
+
   it("passes retry feedback to subsequent attempts", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
     directories.push(workspacePath);
 
-    const adapter = new CopilotCliAdapter({
+    const adapter = new CopilotCliHarness({
       commandTemplate:
         'node -e "if (process.env.AGENT_ATTEMPT === \'1\') { console.error(\'needs retry\'); process.exit(1); } console.log(process.env.COPILOT_RETRY_REASON)"'
     });
@@ -57,6 +78,28 @@ describe("CopilotCliAdapter", () => {
 
     await expect(handle.completed).resolves.toMatchObject({
       output: "Retry with more detail"
+    });
+  });
+
+  it("passes constraints and protected files through templates and task environment", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
+    directories.push(workspacePath);
+
+    const adapter = new CopilotCliHarness({
+      commandTemplate:
+        'node -e "console.log(process.env.COPILOT_CONSTRAINTS); console.log(process.env.COPILOT_PROTECTED_FILES); console.log(process.env.AGENT_CONSTRAINTS); console.log(process.env.AGENT_PROTECTED_FILES); console.log({constraints}); console.log({protectedFiles})"'
+    });
+
+    const handle = adapter.startTask({
+      goal: "Create a plan",
+      context: [],
+      constraints: ["do not modify secret.ts"],
+      protectedFiles: ["secret.ts"],
+      workspacePath
+    });
+
+    await expect(handle.completed).resolves.toMatchObject({
+      output: "do not modify secret.ts\nsecret.ts\ndo not modify secret.ts\nsecret.ts\ndo not modify secret.ts\nsecret.ts"
     });
   });
 });

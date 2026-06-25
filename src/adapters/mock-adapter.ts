@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import type { AgentAdapter, ProgressUpdate, TaskError, TaskHandle, TaskResult } from "../core/types.js";
+import type { HarnessAdapter, ProgressUpdate, TaskError, TaskHandle, TaskResult } from "../core/types.js";
 import { AsyncQueue } from "../utils/async-queue.js";
 import { createDeferred } from "../utils/deferred.js";
 import { ManagedTaskHandle } from "./task-handle.js";
@@ -19,17 +19,23 @@ export interface MockBehavior {
 
 export interface MockAttemptRecord {
   goal: string;
+  model?: string;
   context: string[];
+  constraints: string[];
+  protectedFiles: string[];
   attempt: number;
   failures: string[];
 }
 
-export interface MockAdapterOptions {
+export interface MockHarnessOptions {
   delayMs?: number;
   behaviors?: Record<string, MockBehavior>;
   resolveBehavior?: (params: {
     goal: string;
+    model?: string;
     context: string[];
+    constraints: string[];
+    protectedFiles: string[];
     workspacePath: string;
     attempt: number;
     failures: string[];
@@ -38,7 +44,10 @@ export interface MockAdapterOptions {
 
 interface MockTaskState {
   goal: string;
+  model?: string;
   context: string[];
+  constraints: string[];
+  protectedFiles: string[];
   workspacePath: string;
   attempt: number;
 }
@@ -55,21 +64,30 @@ function shouldFail(attempt: number, failOnAttempt?: number | number[]): boolean
   return failOnAttempt === attempt;
 }
 
-export class MockAdapter implements AgentAdapter {
+export class MockHarness implements HarnessAdapter {
   name = "mock";
   readonly history: MockAttemptRecord[] = [];
 
-  private readonly options: MockAdapterOptions;
+  private readonly options: MockHarnessOptions;
   private readonly state = new WeakMap<ManagedTaskHandle, MockTaskState>();
 
-  constructor(options: MockAdapterOptions = {}) {
+  constructor(options: MockHarnessOptions = {}) {
     this.options = options;
   }
 
-  startTask(params: { goal: string; context: string[]; workspacePath: string }): TaskHandle {
+  startTask(params: {
+    goal: string;
+    model?: string;
+    context: string[];
+    constraints?: string[];
+    protectedFiles?: string[];
+    workspacePath: string;
+  }): TaskHandle {
     const handle = new ManagedTaskHandle();
     const state: MockTaskState = {
       ...params,
+      constraints: params.constraints ?? [],
+      protectedFiles: params.protectedFiles ?? [],
       attempt: 0
     };
 
@@ -92,7 +110,10 @@ export class MockAdapter implements AgentAdapter {
     return (
       this.options.resolveBehavior?.({
         goal: state.goal,
+        model: state.model,
         context: state.context,
+        constraints: state.constraints,
+        protectedFiles: state.protectedFiles,
         workspacePath: state.workspacePath,
         attempt,
         failures
@@ -129,7 +150,10 @@ export class MockAdapter implements AgentAdapter {
 
     this.history.push({
       goal: state.goal,
+      model: state.model,
       context: state.context,
+      constraints: state.constraints,
+      protectedFiles: state.protectedFiles,
       attempt,
       failures
     });

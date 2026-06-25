@@ -1,4 +1,4 @@
-import { derive, protect, sequence, task, type TaskNode } from "piper";
+import { runtimeValue, protect, workflow, task, type TaskNode } from "piper";
 
 interface WithDesignSystemAuditProps {
   designSystemDocs?: string[];
@@ -19,24 +19,24 @@ export function withDesignSystemAudit({
     {
       protectedFiles,
       validate: [
-        derive(async ({ readOutput }) => {
-          const audit = (await readOutput(auditOutput)).toLowerCase();
+        runtimeValue(async ({ readArtifact }) => {
+          const audit = (await readArtifact(auditOutput)).toLowerCase();
           return audit.includes("design system") && (audit.includes("token") || audit.includes("component"));
         }, `${auditOutput} checks design system primitives`)
       ]
     },
-    sequence(
+    workflow(
       steps,
       task({
         goal: auditGoal,
-        agent: "pi",
+        harness: "pi",
         context: [
           `Use these design system references as the source of truth: ${designSystemDocs.join(", ")}`,
           "Check spacing, typography, color, component reuse, accessibility states, and places where one-off CSS should be replaced.",
           "Return findings in a format another automation can consume: file, issue, severity, and recommended system primitive."
         ],
         constraints: protectedFiles.map((file) => `do not modify ${file}`),
-        output: auditOutput
+        artifact: auditOutput
       })
     )
   );

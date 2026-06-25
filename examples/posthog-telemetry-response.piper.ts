@@ -1,6 +1,6 @@
 import { PostHog } from "posthog-node";
 
-import { derive, output, parallel, sequence, task } from "piper";
+import { runtimeValue, artifact, parallel, workflow, task } from "piper";
 
 async function loadPostHogContext() {
   const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
@@ -38,47 +38,47 @@ async function loadPostHogContext() {
 }
 
 export default function postHogTelemetryResponseWorkflow() {
-  return sequence(
+  return workflow(
     task({
       goal: "Summarize production behavior from PostHog feature flag and payload context",
-      agent: "pi",
+      harness: "pi",
       context: [
-        derive(loadPostHogContext, "PostHog production context"),
+        runtimeValue(loadPostHogContext, "PostHog production context"),
         "Identify rollout state, suspicious flag combinations, and user cohorts that need extra care."
       ],
-      output: "posthog-telemetry-brief"
+      artifact: "posthog-telemetry-brief"
     }),
     parallel(
-      { fallback: "Preparing remediation and stakeholder guidance from PostHog context..." },
+      { status: "Preparing remediation and stakeholder guidance from PostHog context..." },
       task({
         goal: "Implement the smallest safe change suggested by the PostHog telemetry brief",
-        agent: "pi",
+        harness: "pi",
         context: [
-          output("posthog-telemetry-brief"),
+          artifact("posthog-telemetry-brief").value(),
           "Prefer changes gated by existing feature flags and preserve rollback behavior."
         ],
-        output: "telemetry-fix"
+        artifact: "telemetry-fix"
       }),
       task({
         goal: "Draft an operator update that explains the observed production flag state",
-        agent: "pi",
+        harness: "pi",
         context: [
-          output("posthog-telemetry-brief"),
+          artifact("posthog-telemetry-brief").value(),
           "Call out whether rollout should continue, pause, or roll back."
         ],
-        output: "operator-update"
+        artifact: "operator-update"
       })
     ),
     task({
       goal: "Verify the telemetry-driven change and capture follow-up instrumentation gaps",
-      agent: "pi",
+      harness: "pi",
       context: [
-        output("telemetry-fix"),
-        output("operator-update"),
+        artifact("telemetry-fix").value(),
+        artifact("operator-update").value(),
         "Make sure the validation explains which PostHog signals should be watched after deploy."
       ],
       validate: [
-        derive(async ({ readOutput }) => (await readOutput("operator-update")).toLowerCase().includes("rollout"), "operator update mentions rollout")
+        runtimeValue(async ({ readArtifact }) => (await readArtifact("operator-update")).toLowerCase().includes("rollout"), "operator update mentions rollout")
       ]
     })
   );

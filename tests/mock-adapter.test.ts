@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter } from "../src/index.js";
+import { MockHarness } from "../src/index.js";
 
-describe("MockAdapter", () => {
+describe("MockHarness", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -17,7 +17,7 @@ describe("MockAdapter", () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "piper-mock-"));
     directories.push(workspacePath);
 
-    const adapter = new MockAdapter({
+    const adapter = new MockHarness({
       behaviors: {
         "Write file": {
           failOnAttempt: 1,

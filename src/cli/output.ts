@@ -1,4 +1,5 @@
-import type { ExecutionSummary, ProgressUpdate, RuntimeReporter, TaskAttemptInfo, TaskNode, TaskResult } from "../core/types.js";
+import { getArtifactName } from "../core/output.js";
+import type { ExecutionSummary, ProgressUpdate, RuntimeHooks, TaskAttemptInfo, TaskNode, TaskResult } from "../core/types.js";
 
 function clip(value: string, limit = 100): string {
   if (value.length <= limit) {
@@ -8,7 +9,7 @@ function clip(value: string, limit = 100): string {
   return `${value.slice(0, limit - 1)}…`;
 }
 
-export class CliReporter implements RuntimeReporter {
+export class CliReporter implements RuntimeHooks {
   private readonly verbose: boolean;
   private readonly writer: NodeJS.WritableStream;
   private readonly errorWriter: NodeJS.WritableStream;
@@ -28,7 +29,8 @@ export class CliReporter implements RuntimeReporter {
   }
 
   taskStarted(info: TaskAttemptInfo): void {
-    this.writer.write(`[run] ${info.id} (${info.agent}, attempt ${info.attempt}) ${info.goal}\n`);
+    const model = info.model ? `, model ${info.model}` : "";
+    this.writer.write(`[run] ${info.id} (${info.harness}${model}, attempt ${info.attempt}) ${info.goal}\n`);
   }
 
   taskProgress(info: TaskAttemptInfo, update: ProgressUpdate): void {
@@ -53,7 +55,7 @@ export class CliReporter implements RuntimeReporter {
 
   summary(summary: ExecutionSummary): void {
     this.writer.write(
-      `[summary] completed=${summary.completedTasks} failed=${summary.failedTasks} outputs=${Object.keys(summary.outputs).length}\n`
+      `[summary] completed=${summary.completedTasks} failed=${summary.failedTasks} artifacts=${Object.keys(summary.artifacts).length}\n`
     );
   }
 }
@@ -68,13 +70,13 @@ function describeNode(node: TaskNode, depth: number): string[] {
   switch (node.kind) {
     case "task":
       return [
-        `${prefix}Task(agent=${node.props.agent}${node.props.output ? `, output=${node.props.output}` : ""}): ${node.props.goal}`
+        `${prefix}Task(harness=${node.props.harness}${node.props.model ? `, model=${node.props.model}` : ""}${node.props.artifact ? `, artifact=${getArtifactName(node.props.artifact)}` : ""}): ${node.props.goal}`
       ];
-    case "sequence":
+    case "workflow":
       return node.props.children.flatMap((child) => describeNode(child, depth));
     case "parallel":
       return [
-        `${prefix}Parallel${typeof node.props.fallback === "string" ? ` fallback="${node.props.fallback}"` : ""}`,
+        `${prefix}Parallel${typeof node.props.status === "string" ? ` status="${node.props.status}"` : ""}`,
         ...node.props.children.flatMap((child) => describeNode(child, depth + 1))
       ];
     case "recover":

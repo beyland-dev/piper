@@ -1,8 +1,8 @@
-import type { SequenceNode, TaskNode, TaskTree } from "./types.js";
+import type { TaskNode, TaskTree, WorkflowNode } from "./types.js";
 
-export function createSequence(children: TaskNode[]): SequenceNode {
+export function createWorkflow(children: TaskNode[]): WorkflowNode {
   return {
-    kind: "sequence",
+    kind: "workflow",
     props: {
       children
     }
@@ -27,7 +27,7 @@ export function normalizeChildren(input: unknown): TaskNode[] {
 
 export function normalizeTree(tree: TaskTree): TaskNode {
   if (Array.isArray(tree)) {
-    return createSequence(normalizeChildren(tree));
+    return createWorkflow(normalizeChildren(tree));
   }
 
   return tree;

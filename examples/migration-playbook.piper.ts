@@ -1,50 +1,50 @@
-import { derive, output, parallel, protect, sequence, task } from "piper";
+import { runtimeValue, artifact, parallel, protect, workflow, task } from "piper";
 
 export default function migrationPlaybookWorkflow() {
-  return sequence(
+  return workflow(
     task({
       goal: "Inventory the legacy surface area before the migration begins",
-      agent: "pi",
+      harness: "pi",
       context: [
         "Map the major integration points, risky files, and ordering constraints.",
         "Call out anything that will need a compatibility layer or phased rollout."
       ],
-      output: "inventory"
+      artifact: "inventory"
     }),
     parallel(
-      { fallback: "Designing migration tracks for API and data changes..." },
+      { status: "Designing migration tracks for API and data changes..." },
       task({
         goal: "Design the API compatibility track for the migration",
-        agent: "pi",
+        harness: "pi",
         context: [
-          output("inventory"),
-          derive(({ workspacePath }) => `Workspace root for this migration: ${workspacePath}`, "workspace root")
+          artifact("inventory").value(),
+          runtimeValue(({ workspacePath }) => `Workspace root for this migration: ${workspacePath}`, "workspace root")
         ],
-        output: "api-track"
+        artifact: "api-track"
       }),
       task({
         goal: "Design the data backfill and cutover track for the migration",
-        agent: "pi",
-        context: [output("inventory")],
-        output: "data-track"
+        harness: "pi",
+        context: [artifact("inventory").value()],
+        artifact: "data-track"
       })
     ),
     task({
       goal: "Compose a final migration playbook from both tracks",
-      agent: "pi",
+      harness: "pi",
       context: [
-        output("api-track"),
-        output("data-track"),
-        derive(async ({ readTaskResult }) => {
+        artifact("api-track").value(),
+        artifact("data-track").value(),
+        runtimeValue(async ({ readTaskResult }) => {
           const apiTrack = await readTaskResult("api-track");
           const dataTrack = await readTaskResult("data-track");
           return `The API track modified ${apiTrack.modifiedFiles.length} files; the data track modified ${dataTrack.modifiedFiles.length} files.`;
         }, "track modification counts")
       ],
-      output: "migration-playbook",
+      artifact: "migration-playbook",
       validate: [
-        derive(async ({ readOutput }) => {
-          const playbook = (await readOutput("migration-playbook")).toLowerCase();
+        runtimeValue(async ({ readArtifact }) => {
+          const playbook = (await readArtifact("migration-playbook")).toLowerCase();
           return playbook.includes("rollback") && playbook.includes("cutover");
         }, "playbook mentions cutover and rollback")
       ]
@@ -53,14 +53,14 @@ export default function migrationPlaybookWorkflow() {
       {
         protectedFiles: ["src/legacy/billing.ts", "migrations/001_initial.sql"],
         validate: [
-          derive(async ({ readOutput }) => (await readOutput("migration-playbook")).includes("phase"), "playbook is phased")
+          runtimeValue(async ({ readArtifact }) => (await readArtifact("migration-playbook")).includes("phase"), "playbook is phased")
         ]
       },
       task({
         goal: "Review the migration playbook for sequencing and rollback gaps",
-        agent: "pi",
+        harness: "pi",
         context: [
-          output("migration-playbook"),
+          artifact("migration-playbook").value(),
           "Focus on dependency ordering, rollback checkpoints, and stakeholder coordination."
         ]
       })

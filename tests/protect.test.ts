@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, WorkflowExecutor, protect, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, protect, task } from "../src/index.js";
 
 async function createGitWorkspace(): Promise<string> {
   const workspacePath = await mkdtemp(join(tmpdir(), "piper-protect-"));
@@ -29,7 +29,7 @@ describe("Protect", () => {
     const workspacePath = await createGitWorkspace();
     directories.push(workspacePath);
 
-    const adapter = new MockAdapter({
+    const adapter = new MockHarness({
       resolveBehavior: ({ attempt }) => {
         if (attempt === 1) {
           return {
@@ -54,21 +54,23 @@ describe("Protect", () => {
       }
     });
 
-    const executor = new WorkflowExecutor({
+    const executor = new PiperOrchestrator({
       workspacePath,
-      adapters: [adapter],
+      harnesses: [adapter],
       taskRetryLimit: 1
     });
 
     await executor.execute(
       protect(
         { protectedFiles: ["auth_legacy.ts"] },
-        task({ goal: "Review task", agent: "mock" })
+        task({ goal: "Review task", harness: "mock" })
       )
     );
 
     const protectedFile = await readFile(join(workspacePath, "auth_legacy.ts"), "utf8");
     expect(protectedFile).toBe("export const legacy = true;\n");
     expect(adapter.history).toHaveLength(2);
+    expect(adapter.history[0]?.constraints).toContain("do not modify auth_legacy.ts");
+    expect(adapter.history[0]?.protectedFiles).toEqual(["auth_legacy.ts"]);
   });
 });

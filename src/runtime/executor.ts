@@ -1,12 +1,18 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { ROOT_CONSTRAINT_SCOPE, extendConstraintScope, protectedFileConstraint, type ConstraintScope } from "../core/constraint-context.js";
 import { normalizeTree } from "../core/node-utils.js";
-import { isSignal } from "../core/output.js";
+import { getArtifactName, isArtifact, isRuntimeValue } from "../core/output.js";
 import type {
-  AgentAdapter,
+  HarnessAdapter,
+  ContextValue,
   ExecutionSummary,
   ExecutorOptions,
-  RuntimeReporter,
-  SignalRuntimeContext,
+  ArtifactStorageOptions,
+  RuntimeHooks,
+  RuntimeValueContext,
   TaskAttemptInfo,
   TaskError,
   TaskHandle,
@@ -17,7 +23,9 @@ import type {
 import { captureGitSnapshot, enforceProtectedFiles } from "./constraint-checker.js";
 import { runValidations } from "./validator.js";
 
-class NullReporter implements RuntimeReporter {
+const DEFAULT_PARALLEL_STATUS = "Running parallel tasks...";
+
+class NullHooks implements RuntimeHooks {
   info(): void {}
   taskStarted(): void {}
   taskProgress(): void {}
@@ -33,7 +41,7 @@ type Waiter<T> = {
 };
 
 class OutputStore {
-  private readonly outputs = new Map<string, TaskResult>();
+  private readonly artifacts = new Map<string, TaskResult>();
   private readonly outputWaiters = new Map<string, Waiter<string>[]>();
   private readonly resultWaiters = new Map<string, Waiter<TaskResult>[]>();
   private readonly declaredOutputs = new Set<string>();
@@ -60,11 +68,11 @@ class OutputStore {
   }
 
   set(name: string, result: TaskResult): void {
-    if (this.outputs.has(name)) {
+    if (this.artifacts.has(name)) {
       throw new Error(`Output "${name}" has already been produced.`);
     }
 
-    this.outputs.set(name, result);
+    this.artifacts.set(name, result);
     this.failures.delete(name);
     this.pendingProducers.set(name, 0);
 
@@ -79,7 +87,7 @@ class OutputStore {
   }
 
   fail(name: string, error = this.createTaskFailedError(name)): void {
-    if (!this.declaredOutputs.has(name) || this.outputs.has(name) || this.failures.has(name)) {
+    if (!this.declaredOutputs.has(name) || this.artifacts.has(name) || this.failures.has(name)) {
       return;
     }
 
@@ -94,7 +102,7 @@ class OutputStore {
 
   closePending(reason?: unknown): void {
     for (const name of this.declaredOutputs) {
-      if (this.outputs.has(name) || this.failures.has(name)) {
+      if (this.artifacts.has(name) || this.failures.has(name)) {
         continue;
       }
 
@@ -105,7 +113,7 @@ class OutputStore {
   }
 
   async waitForOutput(name: string): Promise<string> {
-    const existing = this.outputs.get(name);
+    const existing = this.artifacts.get(name);
     if (existing) {
       return existing.output;
     }
@@ -127,7 +135,7 @@ class OutputStore {
   }
 
   async waitForResult(name: string): Promise<TaskResult> {
-    const existing = this.outputs.get(name);
+    const existing = this.artifacts.get(name);
     if (existing) {
       return existing;
     }
@@ -149,7 +157,11 @@ class OutputStore {
   }
 
   snapshot(): Record<string, string> {
-    return Object.fromEntries([...this.outputs.entries()].map(([name, result]) => [name, result.output]));
+    return Object.fromEntries([...this.artifacts.entries()].map(([name, result]) => [name, result.output]));
+  }
+
+  snapshotResults(): Record<string, TaskResult> {
+    return Object.fromEntries(this.artifacts.entries());
   }
 
   private rejectWaiters(name: string, error: Error): void {
@@ -166,25 +178,70 @@ class OutputStore {
 
   private createUnknownOutputError(name: string): Error {
     return new Error(
-      `Unknown output "${name}". No task declares output="${name}". Add or fix output="${name}" on an upstream task.`
+      `Unknown artifact "${name}". No task declares artifact="${name}". Add or fix artifact="${name}" on an upstream task.`
     );
   }
 
   private createTaskFailedError(name: string): Error {
-    return new Error(`Output "${name}" was not produced because its task failed.`);
+    return new Error(`Artifact "${name}" was not produced because its task failed.`);
   }
 
   private createExecutionAbortedError(name: string): Error {
-    return new Error(`Output "${name}" was not produced because execution aborted.`);
+    return new Error(`Artifact "${name}" was not produced because execution aborted.`);
   }
 
   private createNeverProducedError(name: string): Error {
-    return new Error(`Output "${name}" was declared but never produced.`);
+    return new Error(`Artifact "${name}" was declared but never produced.`);
   }
 }
 
-function collectDeclaredOutputs(node: TaskNode): Map<string, number> {
+interface OutputGraph {
+  declarations: Map<string, number>;
+  references: Map<string, string[]>;
+}
+
+function addReference(references: Map<string, string[]>, name: string, description: string): void {
+  const existing = references.get(name) ?? [];
+  existing.push(description);
+  references.set(name, existing);
+}
+
+function collectContextReferences(
+  references: Map<string, string[]>,
+  values: unknown[] | undefined,
+  owner: string
+): void {
+  for (const value of values ?? []) {
+    if (isArtifact(value)) {
+      addReference(references, value.name, `${owner} context`);
+      continue;
+    }
+
+    if (isRuntimeValue(value)) {
+      for (const dependency of value.dependencies) {
+        addReference(references, dependency, `${owner} runtime value "${value.description}"`);
+      }
+    }
+  }
+}
+
+function collectValidationReferences(
+  references: Map<string, string[]>,
+  values: unknown[] | undefined,
+  owner: string
+): void {
+  for (const value of values ?? []) {
+    if (isRuntimeValue(value)) {
+      for (const dependency of value.dependencies) {
+        addReference(references, dependency, `${owner} validation "${value.description}"`);
+      }
+    }
+  }
+}
+
+function collectOutputGraph(node: TaskNode): OutputGraph {
   const declarations = new Map<string, number>();
+  const references = new Map<string, string[]>();
 
   const visit = (current: TaskNode): void => {
     if (!current) {
@@ -193,23 +250,26 @@ function collectDeclaredOutputs(node: TaskNode): Map<string, number> {
 
     switch (current.kind) {
       case "task":
-        if (current.props.output) {
-          declarations.set(current.props.output, (declarations.get(current.props.output) ?? 0) + 1);
+        if (current.props.artifact) {
+          const name = getArtifactName(current.props.artifact);
+          declarations.set(name, (declarations.get(name) ?? 0) + 1);
         }
+        collectContextReferences(references, current.props.context, `task "${current.props.goal}"`);
+        collectValidationReferences(references, current.props.validate, `task "${current.props.goal}"`);
         return;
-      case "sequence":
+      case "workflow":
       case "protect":
       case "recover":
         for (const child of current.props.children) {
           visit(child);
         }
+        if (current.kind === "protect") {
+          collectValidationReferences(references, current.props.validate, "protect block");
+        }
         return;
       case "parallel":
         for (const child of current.props.children) {
           visit(child);
-        }
-        if (current.props.fallback && typeof current.props.fallback !== "string") {
-          visit(current.props.fallback);
         }
         return;
       default:
@@ -218,7 +278,27 @@ function collectDeclaredOutputs(node: TaskNode): Map<string, number> {
   };
 
   visit(node);
-  return declarations;
+  return { declarations, references };
+}
+
+function validateOutputGraph(graph: OutputGraph): void {
+  const failures: string[] = [];
+
+  for (const [name, count] of graph.declarations) {
+    if (count > 1) {
+      failures.push(`Artifact "${name}" is declared ${count} times. Each artifact must have exactly one producer.`);
+    }
+  }
+
+  for (const [name, locations] of graph.references) {
+    if (!graph.declarations.has(name)) {
+      failures.push(`Artifact "${name}" is referenced by ${locations.join(", ")} but no task declares it.`);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Invalid workflow:\n${failures.map((failure) => `- ${failure}`).join("\n")}`);
+  }
 }
 
 function toTaskError(error: unknown, fallbackMessage = "Task failed"): TaskError {
@@ -241,59 +321,126 @@ function toTaskError(error: unknown, fallbackMessage = "Task failed"): TaskError
   };
 }
 
-export class WorkflowExecutor {
-  private readonly adapters = new Map<string, AgentAdapter>();
-  private readonly reporter: RuntimeReporter;
+function createRunId(): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const random = Math.random().toString(36).slice(2, 8);
+  return `${timestamp}-${random}`;
+}
+
+class OutputPersistence {
+  readonly runId: string;
+  readonly artifactPath: string;
+
+  private readonly runDirectory: string;
+  private readonly workspacePath: string;
+
+  constructor(workspacePath: string, options: ArtifactStorageOptions = {}) {
+    this.workspacePath = workspacePath;
+    this.runId = options.runId ?? createRunId();
+    const rootDir = options.rootDir ?? join(homedir(), ".piper", "runs");
+    this.runDirectory = join(rootDir, this.runId);
+    this.artifactPath = join(this.runDirectory, "artifacts.json");
+  }
+
+  async write(artifacts: Record<string, TaskResult>, summary?: Omit<ExecutionSummary, "artifacts">): Promise<void> {
+    await mkdir(this.runDirectory, { recursive: true });
+    await writeFile(
+      this.artifactPath,
+      `${JSON.stringify(
+        {
+          runId: this.runId,
+          workspacePath: this.workspacePath,
+          updatedAt: new Date().toISOString(),
+          summary,
+          artifacts
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+  }
+}
+
+export class PiperOrchestrator {
+  private readonly harnesses = new Map<string, HarnessAdapter>();
+  private readonly hooks: RuntimeHooks;
   private readonly retryLimit: number;
-  private outputs = new OutputStore();
+  private readonly outputPersistence: OutputPersistence | null;
+  private artifacts = new OutputStore();
   private readonly workspacePath: string;
   private taskIndex = 0;
   private completedTasks = 0;
   private failedTasks = 0;
 
   constructor(options: ExecutorOptions) {
-    for (const adapter of options.adapters) {
-      this.adapters.set(adapter.name, adapter);
+    for (const harness of options.harnesses) {
+      this.harnesses.set(harness.name, harness);
     }
 
-    this.reporter = options.reporter ?? new NullReporter();
+    this.hooks = options.hooks ?? new NullHooks();
     this.retryLimit = options.taskRetryLimit ?? 3;
     this.workspacePath = options.workspacePath;
+    this.outputPersistence =
+      options.artifactStorage === false
+        ? null
+        : new OutputPersistence(options.workspacePath, options.artifactStorage);
   }
 
   async execute(tree: TaskTree): Promise<ExecutionSummary> {
     const normalizedTree = normalizeTree(tree);
-    this.outputs = new OutputStore(collectDeclaredOutputs(normalizedTree));
+    const outputGraph = collectOutputGraph(normalizedTree);
+    validateOutputGraph(outputGraph);
+    this.artifacts = new OutputStore(outputGraph.declarations);
+    await this.persistOutputs();
 
     try {
       await this.executeNode(normalizedTree, ROOT_CONSTRAINT_SCOPE);
     } catch (error) {
-      this.outputs.closePending(error);
+      this.artifacts.closePending(error);
+      await this.persistOutputs();
       throw error;
     }
 
-    this.outputs.closePending();
+    this.artifacts.closePending();
 
     const summary = {
       completedTasks: this.completedTasks,
       failedTasks: this.failedTasks,
-      outputs: this.outputs.snapshot()
+      artifacts: this.artifacts.snapshot(),
+      runId: this.outputPersistence?.runId ?? null,
+      artifactPath: this.outputPersistence?.artifactPath ?? null
     };
 
-    this.reporter.summary(summary);
+    await this.persistOutputs(summary);
+    this.hooks.summary(summary);
     return summary;
   }
 
-  private createSignalRuntimeContext(): SignalRuntimeContext {
+  private async persistOutputs(summary?: ExecutionSummary): Promise<void> {
+    await this.outputPersistence?.write(
+      this.artifacts.snapshotResults(),
+      summary
+        ? {
+            completedTasks: summary.completedTasks,
+            failedTasks: summary.failedTasks,
+            runId: summary.runId,
+            artifactPath: summary.artifactPath
+          }
+        : undefined
+    );
+  }
+
+  private createRuntimeValueContext(): RuntimeValueContext {
     return {
       workspacePath: this.workspacePath,
-      readOutput: (name) => this.outputs.waitForOutput(name),
-      readTaskResult: (name) => this.outputs.waitForResult(name)
+      readArtifact: (name) => this.artifacts.waitForOutput(name),
+      readTaskResult: (name) => this.artifacts.waitForResult(name)
     };
   }
 
-  private async resolveContext(values: Array<string | { resolve(context: SignalRuntimeContext): Promise<string> | string }> = []): Promise<string[]> {
-    const context = this.createSignalRuntimeContext();
+  private async resolveContext(values: ContextValue[] = []): Promise<string[]> {
+    const context = this.createRuntimeValueContext();
 
     return Promise.all(
       values.map(async (value) => {
@@ -301,7 +448,7 @@ export class WorkflowExecutor {
           return value;
         }
 
-        if (isSignal(value)) {
+        if (isRuntimeValue(value)) {
           return value.resolve(context);
         }
 
@@ -313,7 +460,7 @@ export class WorkflowExecutor {
   private async observeAttempt(handle: TaskHandle, info: TaskAttemptInfo): Promise<TaskResult> {
     const progressTask = (async () => {
       for await (const update of handle.progress) {
-        this.reporter.taskProgress(info, update);
+        this.hooks.taskProgress(info, update);
       }
     })();
 
@@ -332,9 +479,9 @@ export class WorkflowExecutor {
   }
 
   private async executeTask(node: Extract<TaskNode, { kind: "task" }>, scope: ConstraintScope): Promise<void> {
-    const adapter = this.adapters.get(node.props.agent);
-    if (!adapter) {
-      throw new Error(`No adapter registered for agent "${node.props.agent}".`);
+    const harness = this.harnesses.get(node.props.harness);
+    if (!harness) {
+      throw new Error(`No harness registered for "${node.props.harness}".`);
     }
 
     const taskId = `task-${++this.taskIndex}`;
@@ -348,21 +495,25 @@ export class WorkflowExecutor {
       const info: TaskAttemptInfo = {
         id: taskId,
         goal: node.props.goal,
-        agent: node.props.agent,
+        harness: node.props.harness,
+        model: node.props.model,
         attempt
       };
 
       const snapshot = await captureGitSnapshot(this.workspacePath);
-      this.reporter.taskStarted(info);
+      this.hooks.taskStarted(info);
 
       if (attempt === 1) {
-        taskHandle = adapter.startTask({
+        taskHandle = harness.startTask({
           goal: node.props.goal,
+          model: node.props.model,
           context: resolvedContext,
+          constraints: childScope.constraints,
+          protectedFiles: childScope.protectedFiles,
           workspacePath: this.workspacePath
         });
       } else {
-        adapter.retry(taskHandle as TaskHandle, failures);
+        harness.retry(taskHandle as TaskHandle, failures);
       }
 
       let result: TaskResult;
@@ -385,16 +536,16 @@ export class WorkflowExecutor {
 
         if (error.retryable && attempt < maxAttempts) {
           failures = combinedFailures;
-          this.reporter.taskRetry(info, combinedFailures);
+          this.hooks.taskRetry(info, combinedFailures);
           continue;
         }
 
-        if (node.props.output) {
-          this.outputs.fail(node.props.output);
+        if (node.props.artifact) {
+          this.artifacts.fail(getArtifactName(node.props.artifact));
         }
 
         this.failedTasks += 1;
-        this.reporter.taskFailed(info, error);
+        this.hooks.taskFailed(info, error);
         node.props["on:error"]?.(error);
         throw error;
       }
@@ -404,13 +555,13 @@ export class WorkflowExecutor {
         snapshot,
         protectedFiles: childScope.protectedFiles
       });
-      const validationFailures = await runValidations(node.props.validate, this.createSignalRuntimeContext());
+      const validationFailures = await runValidations(node.props.validate, this.createRuntimeValueContext());
       const allFailures = [...constraintFailures, ...validationFailures];
 
       if (allFailures.length > 0) {
         if (attempt < maxAttempts) {
           failures = allFailures;
-          this.reporter.taskRetry(info, allFailures);
+          this.hooks.taskRetry(info, allFailures);
           continue;
         }
 
@@ -421,22 +572,23 @@ export class WorkflowExecutor {
           retryable: false
         };
 
-        if (node.props.output) {
-          this.outputs.fail(node.props.output);
+        if (node.props.artifact) {
+          this.artifacts.fail(getArtifactName(node.props.artifact));
         }
 
         this.failedTasks += 1;
-        this.reporter.taskFailed(info, error);
+        this.hooks.taskFailed(info, error);
         node.props["on:error"]?.(error);
         throw error;
       }
 
-      if (node.props.output) {
-        this.outputs.set(node.props.output, result);
+      if (node.props.artifact) {
+        this.artifacts.set(getArtifactName(node.props.artifact), result);
+        await this.persistOutputs();
       }
 
       this.completedTasks += 1;
-      this.reporter.taskCompleted(info, result);
+      this.hooks.taskCompleted(info, result);
       node.props["on:complete"]?.(result);
       return;
     }
@@ -445,17 +597,10 @@ export class WorkflowExecutor {
   }
 
   private async executeParallel(node: Extract<TaskNode, { kind: "parallel" }>, scope: ConstraintScope): Promise<void> {
-    if (typeof node.props.fallback === "string") {
-      this.reporter.info(node.props.fallback);
-    }
-
-    const fallbackPromise =
-      node.props.fallback && typeof node.props.fallback !== "string"
-        ? this.executeNode(node.props.fallback, scope)
-        : Promise.resolve();
+    this.hooks.info(node.props.status ?? DEFAULT_PARALLEL_STATUS);
 
     const childrenPromise = Promise.all(node.props.children.map((child) => this.executeNode(child, scope)));
-    await Promise.all([childrenPromise, fallbackPromise]);
+    await childrenPromise;
   }
 
   private async executeRecover(node: Extract<TaskNode, { kind: "recover" }>, scope: ConstraintScope): Promise<void> {
@@ -479,9 +624,10 @@ export class WorkflowExecutor {
           retryRequested = true;
         };
 
-        const fallback = node.props.fallback(error, retry);
-        this.outputs.declareAll(collectDeclaredOutputs(fallback));
-        await this.executeNode(fallback, scope);
+        const recovery = node.props.onFailure(error, retry);
+        const recoveryOutputGraph = collectOutputGraph(recovery);
+        this.artifacts.declareAll(recoveryOutputGraph.declarations);
+        await this.executeNode(recovery, scope);
 
         if (!retryRequested) {
           throw error;
@@ -498,7 +644,7 @@ export class WorkflowExecutor {
 
     await this.executeSequence(node.props.children, childScope);
 
-    const failures = await runValidations(node.props.validate, this.createSignalRuntimeContext());
+    const failures = await runValidations(node.props.validate, this.createRuntimeValueContext());
     if (failures.length > 0) {
       throw {
         message: "Protect validation failed.",
@@ -523,7 +669,7 @@ export class WorkflowExecutor {
       case "task":
         await this.executeTask(node, scope);
         return;
-      case "sequence":
+      case "workflow":
         await this.executeSequence(node.props.children, scope);
         return;
       case "parallel":

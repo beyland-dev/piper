@@ -1,4 +1,4 @@
-import { createSequence, normalizeChildren } from "./node-utils.js";
+import { createWorkflow, normalizeChildren } from "./node-utils.js";
 import { Parallel } from "./parallel.js";
 import { Protect } from "./protect.js";
 import { Recover } from "./recover.js";
@@ -10,11 +10,11 @@ import type {
   ProtectProps,
   RecoverNode,
   RecoverProps,
-  SequenceNode,
   TaskElement,
   TaskNode,
   TaskProps,
-  TaskTree
+  TaskTree,
+  WorkflowNode
 } from "./types.js";
 
 export type ParallelOptions = Omit<ParallelProps, "children">;
@@ -40,12 +40,8 @@ function splitOptions<TOptions extends object>(
   return { options: (first ?? {}) as TOptions, children: rest };
 }
 
-export function workflow(...children: TaskTree[]): SequenceNode {
-  return sequence(...children);
-}
-
-export function sequence(...children: TaskTree[]): SequenceNode {
-  return createSequence(normalizeChildren(children));
+export function workflow(...children: TaskTree[]): WorkflowNode {
+  return createWorkflow(normalizeChildren(children));
 }
 
 export function task(props: TaskProps): TaskElement {

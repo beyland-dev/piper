@@ -1,4 +1,4 @@
-import { derive, output, task } from "piper";
+import { runtimeValue, artifact, task } from "piper";
 
 import { withImplementationPlan } from "../examples/shared-tasks/with-implementation-plan.js";
 import { withRiskReview } from "../examples/shared-tasks/with-risk-review.js";
@@ -11,35 +11,35 @@ export default function repoDevelopmentWorkflow() {
       withImplementationPlan({
         planningGoal: "Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the Piper runtime that can be completed safely in a single pass",
         planOutput: "repo-improvement-plan",
-        fallback: "Preparing a focused improvement plan for the repository...",
+        status: "Preparing a focused improvement plan for the repository...",
         steps: [
           task({
             goal: "Implement the planned improvement, keeping the change narrow and adding or updating focused tests",
-            agent: "pi",
+            harness: "pi",
             context: [
-              output("repo-improvement-plan"),
-              derive(async ({ readTaskResult }) => {
+              artifact("repo-improvement-plan").value(),
+              runtimeValue(async ({ readTaskResult }) => {
                 const plan = await readTaskResult("repo-improvement-plan");
                 return `The planning step modified ${plan.modifiedFiles.length} files while preparing the recommendation.`;
               }, "repo improvement plan file count"),
               "Prefer changes in src/ and tests/ unless the plan specifically calls for user-facing documentation updates.",
               "Keep public API changes minimal and justify them in code comments or test names when they are unavoidable."
             ],
-            output: "implementation-summary",
+            artifact: "implementation-summary",
             validate: [
               "pnpm typecheck",
-              derive(async ({ readOutput }) => {
-                const plan = (await readOutput("repo-improvement-plan")).toLowerCase();
+              runtimeValue(async ({ readArtifact }) => {
+                const plan = (await readArtifact("repo-improvement-plan")).toLowerCase();
                 return plan.includes("test") || plan.includes("validation");
               }, "implementation plan includes testing guidance")
             ]
           }),
           task({
             goal: "Update README guidance only if the implemented improvement changes how maintainers should author or run workflows",
-            agent: "pi",
+            harness: "pi",
             context: [
-              output("repo-improvement-plan"),
-              output("implementation-summary"),
+              artifact("repo-improvement-plan").value(),
+              artifact("implementation-summary").value(),
               "Skip documentation edits when the change is purely internal and does not affect authoring, runtime behavior, or development commands."
             ]
           })
@@ -51,13 +51,13 @@ export default function repoDevelopmentWorkflow() {
         reviewOutput: "repo-risk-review",
         steps: task({
           goal: "Write a short maintainer handoff summary for the completed repository improvement",
-          agent: "pi",
+          harness: "pi",
           context: [
-            output("implementation-summary"),
-            output("repo-risk-review"),
+            artifact("implementation-summary").value(),
+            artifact("repo-risk-review").value(),
             "Summarize what changed, why it was chosen, and what a maintainer should verify before merging."
           ],
-          output: "maintainer-handoff"
+          artifact: "maintainer-handoff"
         })
       })
     ]

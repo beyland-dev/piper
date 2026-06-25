@@ -1,4 +1,4 @@
-import { derive, output, task } from "piper";
+import { runtimeValue, artifact, task } from "piper";
 
 import { withImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
 import { withRiskReview } from "./shared-tasks/with-risk-review.js";
@@ -11,25 +11,25 @@ export default function composableReleaseWorkflow() {
       withImplementationPlan({
         planningGoal: "Draft a release train plan that coordinates notes, rollout steps, and smoke checks",
         planOutput: "release-plan",
-        fallback: "Preparing release deliverables from the shared plan...",
+        status: "Preparing release deliverables from the shared plan...",
         steps: [
           task({
             goal: "Write release notes for the current branch",
-            agent: "pi",
-            context: [output("release-plan")],
-            output: "release-notes"
+            harness: "pi",
+            context: [artifact("release-plan").value()],
+            artifact: "release-notes"
           }),
           task({
             goal: "Prepare rollout instructions and smoke checks",
-            agent: "pi",
+            harness: "pi",
             context: [
-              output("release-plan"),
-              derive(async ({ readTaskResult }) => {
+              artifact("release-plan").value(),
+              runtimeValue(async ({ readTaskResult }) => {
                 const plan = await readTaskResult("release-plan");
                 return `The release plan touched ${plan.modifiedFiles.length} files while being prepared.`;
               }, "release plan file count")
             ],
-            output: "rollout-guide"
+            artifact: "rollout-guide"
           })
         ]
       }),
@@ -39,10 +39,10 @@ export default function composableReleaseWorkflow() {
         reviewOutput: "release-review",
         steps: task({
           goal: "Check the release artifacts for missing operator guidance",
-          agent: "pi",
+          harness: "pi",
           context: [
-            output("release-notes"),
-            output("rollout-guide"),
+            artifact("release-notes").value(),
+            artifact("rollout-guide").value(),
             "Look for missing rollback notes, smoke checks, and on-call instructions."
           ]
         })

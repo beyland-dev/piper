@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, WorkflowExecutor, parallel, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, parallel, task } from "../src/index.js";
 
 describe("Parallel", () => {
   const directories: string[] = [];
@@ -17,24 +17,25 @@ describe("Parallel", () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "piper-parallel-"));
     directories.push(workspacePath);
 
-    const adapter = new MockAdapter({
+    const adapter = new MockHarness({
       behaviors: {
         "Task A": { delayMs: 80 },
         "Task B": { delayMs: 80 }
       }
     });
 
-    const executor = new WorkflowExecutor({
+    const executor = new PiperOrchestrator({
       workspacePath,
-      adapters: [adapter],
-      taskRetryLimit: 0
+      harnesses: [adapter],
+      taskRetryLimit: 0,
+      artifactStorage: false
     });
 
     const start = Date.now();
     await executor.execute(
       parallel(
-        task({ goal: "Task A", agent: "mock" }),
-        task({ goal: "Task B", agent: "mock" })
+        task({ goal: "Task A", harness: "mock" }),
+        task({ goal: "Task B", harness: "mock" })
       )
     );
     const elapsed = Date.now() - start;

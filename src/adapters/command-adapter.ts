@@ -1,4 +1,4 @@
-import type { AgentAdapter, ProgressUpdate, TaskError, TaskHandle, TaskResult } from "../core/types.js";
+import type { HarnessAdapter, ProgressUpdate, TaskError, TaskHandle, TaskResult } from "../core/types.js";
 import { listModifiedFiles } from "../runtime/constraint-checker.js";
 import { AsyncQueue } from "../utils/async-queue.js";
 import { createDeferred } from "../utils/deferred.js";
@@ -6,13 +6,13 @@ import { fillTemplate, shellEscape } from "../utils/shell.js";
 import { spawnStreamingCommand } from "../utils/process.js";
 import { ManagedTaskHandle } from "./task-handle.js";
 
-export interface CommandAgentAdapterOptions {
+export interface CommandHarnessOptions {
   command?: string;
   commandTemplate?: string;
   env?: Record<string, string>;
 }
 
-interface CommandAgentAdapterConfig {
+interface CommandHarnessConfig {
   name: string;
   defaultCommand: string;
   envPrefix: string;
@@ -20,7 +20,10 @@ interface CommandAgentAdapterConfig {
 
 interface CommandTaskState {
   goal: string;
+  model?: string;
   context: string[];
+  constraints: string[];
+  protectedFiles: string[];
   workspacePath: string;
   attempt: number;
 }
@@ -39,23 +42,32 @@ export function defaultPrompt(goal: string, context: string[], failures: string[
   return sections.join("\n\n");
 }
 
-export class CommandAgentAdapter implements AgentAdapter {
+export class CommandHarness implements HarnessAdapter {
   readonly name: string;
 
-  private readonly config: CommandAgentAdapterConfig;
-  private readonly options: CommandAgentAdapterOptions;
+  private readonly config: CommandHarnessConfig;
+  private readonly options: CommandHarnessOptions;
   private readonly state = new WeakMap<ManagedTaskHandle, CommandTaskState>();
 
-  constructor(config: CommandAgentAdapterConfig, options: CommandAgentAdapterOptions = {}) {
+  constructor(config: CommandHarnessConfig, options: CommandHarnessOptions = {}) {
     this.config = config;
     this.name = config.name;
     this.options = options;
   }
 
-  startTask(params: { goal: string; context: string[]; workspacePath: string }): TaskHandle {
+  startTask(params: {
+    goal: string;
+    model?: string;
+    context: string[];
+    constraints?: string[];
+    protectedFiles?: string[];
+    workspacePath: string;
+  }): TaskHandle {
     const handle = new ManagedTaskHandle();
     this.state.set(handle, {
       ...params,
+      constraints: params.constraints ?? [],
+      protectedFiles: params.protectedFiles ?? [],
       attempt: 0
     });
     this.runAttempt(handle, []);
@@ -70,12 +82,16 @@ export class CommandAgentAdapter implements AgentAdapter {
     (taskHandle as ManagedTaskHandle).cancel();
   }
 
-  private buildCommand(goal: string, context: string[], workspacePath: string, attempt: number, failures: string[]): string {
+  private buildCommand(state: CommandTaskState, attempt: number, failures: string[]): string {
+    const { goal, model = "", context, workspacePath } = state;
     const prompt = defaultPrompt(goal, context, failures);
     if (this.options.commandTemplate) {
       return fillTemplate(this.options.commandTemplate, {
         goal,
+        model,
         context: context.join("\n"),
+        constraints: state.constraints.join("\n"),
+        protectedFiles: state.protectedFiles.join("\n"),
         workspacePath,
         prompt,
         retryReason: failures.join("\n"),
@@ -91,15 +107,24 @@ export class CommandAgentAdapter implements AgentAdapter {
     const context = state.context.join("\n");
     const prompt = defaultPrompt(state.goal, state.context, failures);
     const retryReason = failures.join("\n");
+    const model = state.model ?? "";
+    const constraints = state.constraints.join("\n");
+    const protectedFiles = state.protectedFiles.join("\n");
 
     return {
       ...this.options.env,
       [`${this.config.envPrefix}_GOAL`]: state.goal,
+      [`${this.config.envPrefix}_MODEL`]: model,
       [`${this.config.envPrefix}_CONTEXT`]: context,
+      [`${this.config.envPrefix}_CONSTRAINTS`]: constraints,
+      [`${this.config.envPrefix}_PROTECTED_FILES`]: protectedFiles,
       [`${this.config.envPrefix}_PROMPT`]: prompt,
       [`${this.config.envPrefix}_RETRY_REASON`]: retryReason,
       AGENT_GOAL: state.goal,
+      AGENT_MODEL: model,
       AGENT_CONTEXT: context,
+      AGENT_CONSTRAINTS: constraints,
+      AGENT_PROTECTED_FILES: protectedFiles,
       AGENT_RETRY_REASON: retryReason,
       AGENT_WORKSPACE: state.workspacePath,
       AGENT_ATTEMPT: String(attempt)
@@ -127,7 +152,7 @@ export class CommandAgentAdapter implements AgentAdapter {
     void (async () => {
       try {
         const baseline = new Set(await listModifiedFiles(state.workspacePath));
-        const command = this.buildCommand(state.goal, state.context, state.workspacePath, attempt, failures);
+        const command = this.buildCommand(state, attempt, failures);
         const run = spawnStreamingCommand(command, {
           cwd: state.workspacePath,
           env: this.buildEnvironment(state, attempt, failures)

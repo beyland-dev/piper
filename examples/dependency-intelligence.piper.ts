@@ -1,4 +1,4 @@
-import { derive, output, sequence, task } from "piper";
+import { runtimeValue, artifact, workflow, task } from "piper";
 
 async function fetchPackageContext(packageName: string) {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`);
@@ -23,35 +23,35 @@ async function fetchPackageContext(packageName: string) {
 }
 
 export default function dependencyIntelligenceWorkflow() {
-  return sequence(
+  return workflow(
     task({
       goal: "Prepare dependency upgrade context from external registry data",
-      agent: "pi",
+      harness: "pi",
       context: [
-        derive(() => fetchPackageContext("typescript"), "TypeScript npm registry context"),
-        derive(() => fetchPackageContext("vitest"), "Vitest npm registry context"),
+        runtimeValue(() => fetchPackageContext("typescript"), "TypeScript npm registry context"),
+        runtimeValue(() => fetchPackageContext("vitest"), "Vitest npm registry context"),
         "Compare registry data against the current repository constraints before recommending changes."
       ],
-      output: "dependency-intelligence"
+      artifact: "dependency-intelligence"
     }),
     task({
       goal: "Plan a safe dependency update using the fetched package intelligence",
-      agent: "pi",
+      harness: "pi",
       context: [
-        output("dependency-intelligence"),
+        artifact("dependency-intelligence").value(),
         "Call out compatibility risks, validation commands, and whether the update should be deferred."
       ],
-      output: "dependency-update-plan"
+      artifact: "dependency-update-plan"
     }),
     task({
       goal: "Run the dependency update plan through a final risk review",
-      agent: "pi",
+      harness: "pi",
       context: [
-        output("dependency-update-plan"),
+        artifact("dependency-update-plan").value(),
         "Do not update dependencies automatically unless the plan says the risk is low and validation is clear."
       ],
       validate: [
-        derive(async ({ readOutput }) => (await readOutput("dependency-update-plan")).toLowerCase().includes("validation"), "plan includes validation guidance")
+        runtimeValue(async ({ readArtifact }) => (await readArtifact("dependency-update-plan")).toLowerCase().includes("validation"), "plan includes validation guidance")
       ]
     })
   );

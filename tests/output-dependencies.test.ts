@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, WorkflowExecutor, output, parallel, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, artifact, parallel, task } from "../src/index.js";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 200): Promise<T> {
   return Promise.race([
@@ -15,54 +15,78 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 200): Promise<T> {
   ]);
 }
 
-describe("output dependencies", () => {
+describe("artifact dependencies", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
     await Promise.all(directories.map((directory) => rm(directory, { recursive: true, force: true })));
   });
 
-  it("fails fast when output references an undeclared output", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-deps-"));
+  it("fails fast when artifact references an undeclared artifact", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-deps-"));
     directories.push(workspacePath);
 
-    const executor = new WorkflowExecutor({
+    const executor = new PiperOrchestrator({
       workspacePath,
-      adapters: [new MockAdapter()],
-      taskRetryLimit: 0
+      harnesses: [new MockHarness()],
+      taskRetryLimit: 0,
+      artifactStorage: false
     });
 
     await expect(
       withTimeout(
-        executor.execute(task({ goal: "Implement feature", agent: "mock", context: [output("missing")] })),
+        executor.execute(task({ goal: "Implement feature", harness: "mock", context: [artifact("missing").value()] })),
         150
       )
-    ).rejects.toThrow('Unknown output "missing". No task declares output="missing".');
+    ).rejects.toThrow('Invalid workflow:\n- Artifact "missing" is referenced by task "Implement feature" runtime value "artifact value(missing)" but no task declares it.');
   });
 
-  it("includes a fix hint for unknown outputs", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-deps-"));
+  it("includes a fix hint for unknown artifacts", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-deps-"));
     directories.push(workspacePath);
 
-    const executor = new WorkflowExecutor({
+    const executor = new PiperOrchestrator({
       workspacePath,
-      adapters: [new MockAdapter()],
-      taskRetryLimit: 0
+      harnesses: [new MockHarness()],
+      taskRetryLimit: 0,
+      artifactStorage: false
     });
 
     await expect(
       withTimeout(
-        executor.execute(task({ goal: "Implement feature", agent: "mock", context: [output("missing")] })),
+        executor.execute(task({ goal: "Implement feature", harness: "mock", context: [artifact("missing").value()] })),
         150
       )
-    ).rejects.toThrow('Add or fix output="missing" on an upstream task.');
+    ).rejects.toThrow('Artifact "missing" is referenced by task "Implement feature" runtime value "artifact value(missing)" but no task declares it.');
   });
 
-  it("rejects waiting output consumers when the producer task fails", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-deps-"));
+  it("fails before execution when an artifact has multiple producers", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-deps-"));
     directories.push(workspacePath);
 
-    const adapter = new MockAdapter({
+    const adapter = new MockHarness();
+    const executor = new PiperOrchestrator({
+      workspacePath,
+      harnesses: [adapter],
+      taskRetryLimit: 0,
+      artifactStorage: false
+    });
+
+    await expect(
+      executor.execute([
+        task({ goal: "Create first plan", harness: "mock", artifact: "plan" }),
+        task({ goal: "Create second plan", harness: "mock", artifact: "plan" })
+      ])
+    ).rejects.toThrow('Artifact "plan" is declared 2 times.');
+
+    expect(adapter.history).toHaveLength(0);
+  });
+
+  it("rejects waiting artifact consumers when the producer task fails", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-deps-"));
+    directories.push(workspacePath);
+
+    const adapter = new MockHarness({
       resolveBehavior: ({ goal }) => {
         if (goal === "Create plan") {
           return {
@@ -82,30 +106,31 @@ describe("output dependencies", () => {
       }
     });
 
-    const executor = new WorkflowExecutor({
+    const executor = new PiperOrchestrator({
       workspacePath,
-      adapters: [adapter],
-      taskRetryLimit: 0
+      harnesses: [adapter],
+      taskRetryLimit: 0,
+      artifactStorage: false
     });
 
     await expect(
       withTimeout(
         executor.execute(
           parallel(
-            task({ goal: "Create plan", agent: "mock", output: "plan" }),
-            task({ goal: "Implement feature", agent: "mock", context: [output("plan")] })
+            task({ goal: "Create plan", harness: "mock", artifact: "plan" }),
+            task({ goal: "Implement feature", harness: "mock", context: [artifact("plan").value()] })
           )
         ),
         200
       )
     ).rejects.toThrow("Plan task failed");
 
-    const outputs = (executor as unknown as {
-      outputs: { waitForOutput(name: string): Promise<string> };
-    }).outputs;
+    const artifacts = (executor as unknown as {
+      artifacts: { waitForOutput(name: string): Promise<string> };
+    }).artifacts;
 
-    await expect(withTimeout(outputs.waitForOutput("plan"), 100)).rejects.toThrow(
-      'Output "plan" was not produced because its task failed.'
+    await expect(withTimeout(artifacts.waitForOutput("plan"), 100)).rejects.toThrow(
+      'Artifact "plan" was not produced because its task failed.'
     );
   });
 });

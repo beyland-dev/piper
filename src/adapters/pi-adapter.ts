@@ -1,9 +1,9 @@
-import { CommandAgentAdapter, type CommandAgentAdapterOptions } from "./command-adapter.js";
+import { CommandHarness, type CommandHarnessOptions } from "./command-adapter.js";
 
-export interface PiAdapterOptions extends CommandAgentAdapterOptions {}
+export interface PiHarnessOptions extends CommandHarnessOptions {}
 
-export class PiAdapter extends CommandAgentAdapter {
-  constructor(options: PiAdapterOptions = {}) {
+export class PiHarness extends CommandHarness {
+  constructor(options: PiHarnessOptions = {}) {
     super(
       {
         name: "pi",

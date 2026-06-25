@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, WorkflowExecutor, recover, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, recover, task } from "../src/index.js";
 
 describe("Recover", () => {
   const directories: string[] = [];
@@ -20,7 +20,7 @@ describe("Recover", () => {
     // resolveBehavior tracks global starts so the second invocation of "Unstable task"
     // (triggered by Recover's retry) succeeds even though each new handle starts at attempt 1.
     let unstableStarts = 0;
-    const adapter = new MockAdapter({
+    const adapter = new MockHarness({
       resolveBehavior: ({ goal }) => {
         if (goal === "Unstable task") {
           unstableStarts += 1;
@@ -37,28 +37,29 @@ describe("Recover", () => {
       }
     });
 
-    const executor = new WorkflowExecutor({
+    const executor = new PiperOrchestrator({
       workspacePath,
-      adapters: [adapter],
-      taskRetryLimit: 0
+      harnesses: [adapter],
+      taskRetryLimit: 0,
+      artifactStorage: false
     });
 
     const summary = await executor.execute(
       recover(
         {
           maxRetries: 1,
-          fallback: (_error, retry) =>
+          onFailure: (_error, retry) =>
             task({
               goal: "Recovery task",
-              agent: "mock",
+              harness: "mock",
               "on:complete": () => retry()
             })
         },
-        task({ goal: "Unstable task", agent: "mock", output: "result" })
+        task({ goal: "Unstable task", harness: "mock", artifact: "result" })
       )
     );
 
-    expect(summary.outputs.result).toBe("Recovered result");
+    expect(summary.artifacts.result).toBe("Recovered result");
     expect(adapter.history.filter((entry) => entry.goal === "Unstable task")).toHaveLength(2);
   });
 });

@@ -1,28 +1,28 @@
-import { parallel, sequence, task, type TaskNode } from "piper";
+import { parallel, workflow, task, type TaskNode } from "piper";
 
 interface WithImplementationPlanProps {
   planningGoal: string;
   planOutput: string;
-  fallback?: string;
+  status?: string;
   steps?: TaskNode | TaskNode[];
 }
 
 export function withImplementationPlan({
   planningGoal,
   planOutput,
-  fallback = "Waiting for the shared implementation plan...",
+  status = "Waiting for the shared implementation plan...",
   steps
 }: WithImplementationPlanProps) {
-  return sequence(
+  return workflow(
     task({
       goal: planningGoal,
-      agent: "pi",
+      harness: "pi",
       context: [
         "Produce a plan detailed enough that multiple follow-up tasks can execute independently.",
         "Prefer explicit file and validation guidance over general architectural advice."
       ],
-      output: planOutput
+      artifact: planOutput
     }),
-    parallel({ fallback }, steps)
+    parallel({ status }, steps)
   );
 }

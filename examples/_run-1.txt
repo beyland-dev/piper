@@ -1,7 +1,7 @@
-➜ pnpm run piper -- examples/repo-development.agent.tsx --workspace . --verbose
+➜ pnpm run piper -- automations/repo-development.piper.ts --workspace .
 
 > piper@0.1.0 piper /var/home/hawkticehurst/Documents/programming/projects/agent-framework
-> tsx src/cli/index.ts -- examples/repo-development.agent.tsx --workspace . --verbose
+> tsx src/cli/index.ts -- automations/repo-development.piper.ts --workspace .
 
 [run] task-1 (pi, attempt 1) Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the agent runtime that can be completed safely in a single pass
   [task-1] After inspecting `src/`, `tests/`, and `README.md`, I’d pick this as the **smallest high-leverage runtime improvement**:
@@ -81,7 +81,7 @@
   [task-1]      - or producer failed before output was produced
   [task-1] 
   [task-1] ### Notes
-  [task-1] - Use `MockAdapter` for all cases
+  [task-1] - Use `MockHarness` for all cases
   [task-1] - For failure case, prefer `resolveBehavior` so attempt behavior is explicit and local to the test
   [task-1] 
   [task-1] ---

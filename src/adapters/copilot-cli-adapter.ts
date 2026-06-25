@@ -1,11 +1,11 @@
-import { CommandAgentAdapter, type CommandAgentAdapterOptions } from "./command-adapter.js";
+import { CommandHarness, type CommandHarnessOptions } from "./command-adapter.js";
 
-export interface CopilotCliAdapterOptions extends CommandAgentAdapterOptions {
+export interface CopilotCliHarnessOptions extends CommandHarnessOptions {
   name?: string;
 }
 
-export class CopilotCliAdapter extends CommandAgentAdapter {
-  constructor(options: CopilotCliAdapterOptions = {}) {
+export class CopilotCliHarness extends CommandHarness {
+  constructor(options: CopilotCliHarnessOptions = {}) {
     const { name = "copilot", ...commandOptions } = options;
 
     super(

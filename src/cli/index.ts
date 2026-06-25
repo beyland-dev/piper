@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
 
-import { MockAdapter } from "../adapters/mock-adapter.js";
-import { CopilotCliAdapter } from "../adapters/copilot-cli-adapter.js";
-import { PiAdapter } from "../adapters/pi-adapter.js";
+import { MockHarness } from "../adapters/mock-adapter.js";
+import { CopilotCliHarness } from "../adapters/copilot-cli-adapter.js";
+import { PiHarness } from "../adapters/pi-adapter.js";
 import { normalizeTree } from "../core/node-utils.js";
 import type { TaskNode } from "../core/types.js";
-import { WorkflowExecutor } from "../runtime/executor.js";
+import { PiperOrchestrator } from "../runtime/executor.js";
 import { CliReporter, formatTaskTree } from "./output.js";
 
 interface RunOptions {
@@ -37,37 +37,38 @@ interface RunCliOptions {
   cwd?: string;
 }
 
-const HELP_TEXT = `Usage: piper <workflow.agent.ts> [options]
+const HELP_TEXT = `Usage: piper <workflow.piper.ts> [options]
 
 Compile and run a Piper workflow.
 
 Arguments:
-  workflow.agent.ts       Path to the workflow module.
+  workflow.piper.ts       Path to the workflow module.
 
 Options:
   --workspace <path>      Workspace directory for task execution. Defaults to the current directory.
-  --verbose               Print verbose runtime output.
+  --quiet                 Print only high-level runtime artifact.
+  --verbose               Print verbose runtime artifact. This is the default.
   --dry-run               Print the task tree without executing it.
   --print-compiled        Print the bundled workflow module without executing it.
   -h, --help              Show this help information.
 
 Examples:
-  piper examples/simple-task.agent.ts
+  piper examples/simple-task.piper.ts
       Run a workflow using the current directory as the workspace.
 
-  piper examples/simple-task.agent.ts --workspace .
+  piper examples/simple-task.piper.ts --workspace .
       Run a workflow with an explicit workspace directory.
 
-  piper examples/simple-task.agent.ts --dry-run
+  piper examples/simple-task.piper.ts --dry-run
       Preview the task tree without executing tasks.
 
-  piper examples/simple-task.agent.ts --verbose
-      Include verbose runtime output while tasks execute.
+  piper examples/simple-task.piper.ts --quiet
+      Suppress verbose progress artifact while tasks execute.
 
-  piper examples/simple-task.agent.ts --print-compiled
+  piper examples/simple-task.piper.ts --print-compiled
       Inspect the bundled workflow module without executing it.
 
-  pnpm run piper -- examples/simple-task.agent.ts --workspace .
+  pnpm run piper -- examples/simple-task.piper.ts --workspace .
       Forward arguments through a package manager script.`;
 
 async function resolveRuntimeEntry(relativeBase: string): Promise<string> {
@@ -94,7 +95,7 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
   }
 
   let workspacePath = cwd;
-  let verbose = false;
+  let verbose = true;
   let dryRun = false;
   let printCompiled = false;
 
@@ -111,6 +112,11 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 
     if (current === "--verbose") {
       verbose = true;
+      continue;
+    }
+
+    if (current === "--quiet") {
+      verbose = false;
       continue;
     }
 
@@ -196,7 +202,7 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
       return 0;
     }
 
-    const reporter = new CliReporter({
+    const hooks = new CliReporter({
       verbose: parsed.verbose,
       stdout: options.stdout,
       stderr: options.stderr
@@ -210,29 +216,32 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
     const taskTree = await loadWorkflow(parsed.workflowPath);
 
     if (parsed.dryRun) {
-      reporter.info("Dry run");
-      reporter.info(formatTaskTree(taskTree));
+      hooks.info("Dry run");
+      hooks.info(formatTaskTree(taskTree));
       return 0;
     }
 
-    const executor = new WorkflowExecutor({
+    const orchestrator = new PiperOrchestrator({
       workspacePath: parsed.workspacePath,
       taskRetryLimit: 3,
-      reporter,
-      adapters: [
-        new PiAdapter({
+      hooks,
+      artifactStorage: process.env.PIPER_ARTIFACT_ROOT
+        ? { rootDir: process.env.PIPER_ARTIFACT_ROOT }
+        : undefined,
+      harnesses: [
+        new PiHarness({
           command: process.env.PI_COMMAND ?? "pi",
           commandTemplate: process.env.PI_COMMAND_TEMPLATE
         }),
-        new CopilotCliAdapter({
+        new CopilotCliHarness({
           command: process.env.COPILOT_COMMAND ?? "copilot",
           commandTemplate: process.env.COPILOT_COMMAND_TEMPLATE
         }),
-        new MockAdapter()
+        new MockHarness()
       ]
     });
 
-    await executor.execute(taskTree);
+    await orchestrator.execute(taskTree);
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -1,10 +1,10 @@
-import { isSignal } from "../core/output.js";
-import type { SignalRuntimeContext, ValidationValue } from "../core/types.js";
+import { isRuntimeValue } from "../core/output.js";
+import type { RuntimeValueContext, ValidationValue } from "../core/types.js";
 import { runCommand } from "../utils/process.js";
 
 export async function runValidations(
   validations: ValidationValue[] | undefined,
-  context: SignalRuntimeContext
+  context: RuntimeValueContext
 ): Promise<string[]> {
   const failures: string[] = [];
 
@@ -25,14 +25,14 @@ export async function runValidations(
       continue;
     }
 
-    if (!isSignal(validation)) {
-      failures.push("Encountered an invalid validation signal.");
+    if (!isRuntimeValue(validation)) {
+      failures.push("Encountered an invalid validation runtime value.");
       continue;
     }
 
     const passed = await validation.resolve(context);
     if (passed !== true) {
-      failures.push(`Signal validation failed: ${validation.description}`);
+      failures.push(`Runtime value validation failed: ${validation.description}`);
     }
   }
 
