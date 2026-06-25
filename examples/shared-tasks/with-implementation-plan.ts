@@ -4,14 +4,14 @@ interface WithImplementationPlanProps {
   planningGoal: string;
   planOutput: string;
   fallback?: string;
-  children?: TaskNode | TaskNode[];
+  steps?: TaskNode | TaskNode[];
 }
 
 export function withImplementationPlan({
   planningGoal,
   planOutput,
   fallback = "Waiting for the shared implementation plan...",
-  children
+  steps
 }: WithImplementationPlanProps) {
   return sequence(
     task({
@@ -23,6 +23,6 @@ export function withImplementationPlan({
       ],
       output: planOutput
     }),
-    parallel({ fallback }, children)
+    parallel({ fallback }, steps)
   );
 }

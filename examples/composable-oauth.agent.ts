@@ -7,15 +7,15 @@ import { withTests } from "./shared-tasks/with-tests.js";
 export default function composableOAuthWorkflow() {
   return withTests({
     testCommand: "pnpm test -- oauth",
-    children: withRiskReview({
+    steps: withRiskReview({
       protectedFiles: ["src/auth/legacy-oauth.ts", "infra/oauth-secrets.env"],
       reviewGoal: "Review the OAuth changes for token handling, rollback readiness, and supportability",
       reviewOutput: "oauth-review",
-      children: withImplementationPlan({
+      steps: withImplementationPlan({
         planningGoal: "Create a shared implementation plan for an OAuth login and token refresh rollout",
         planOutput: "oauth-plan",
         fallback: "Using the OAuth plan to coordinate endpoint work...",
-        children: [
+        steps: [
           task({
             goal: "Add the OAuth login endpoint and callback handling",
             agent: "pi",

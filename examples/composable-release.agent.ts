@@ -7,12 +7,12 @@ import { withTests } from "./shared-tasks/with-tests.js";
 export default function composableReleaseWorkflow() {
   return withTests({
     testCommand: "pnpm vitest run tests/end-to-end.test.ts",
-    children: [
+    steps: [
       withImplementationPlan({
         planningGoal: "Draft a release train plan that coordinates notes, rollout steps, and smoke checks",
         planOutput: "release-plan",
         fallback: "Preparing release deliverables from the shared plan...",
-        children: [
+        steps: [
           task({
             goal: "Write release notes for the current branch",
             agent: "pi",
@@ -37,7 +37,7 @@ export default function composableReleaseWorkflow() {
         protectedFiles: [".github/workflows/release.yml", "infra/production.tf"],
         reviewGoal: "Review the release package for deployment risk and rollback gaps",
         reviewOutput: "release-review",
-        children: task({
+        steps: task({
           goal: "Check the release artifacts for missing operator guidance",
           agent: "pi",
           context: [

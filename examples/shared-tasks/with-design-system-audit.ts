@@ -5,7 +5,7 @@ interface WithDesignSystemAuditProps {
   protectedFiles?: string[];
   auditGoal?: string;
   auditOutput?: string;
-  children?: TaskNode | TaskNode[];
+  steps?: TaskNode | TaskNode[];
 }
 
 export function withDesignSystemAudit({
@@ -13,7 +13,7 @@ export function withDesignSystemAudit({
   protectedFiles = ["packages/ui/tokens.ts"],
   auditGoal = "Audit the changes for design system adherence",
   auditOutput = "design-system-audit",
-  children
+  steps
 }: WithDesignSystemAuditProps) {
   return protect(
     {
@@ -26,7 +26,7 @@ export function withDesignSystemAudit({
       ]
     },
     sequence(
-      children,
+      steps,
       task({
         goal: auditGoal,
         agent: "pi",

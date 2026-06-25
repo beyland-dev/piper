@@ -4,14 +4,14 @@ interface WithRiskReviewProps {
   protectedFiles: string[];
   reviewGoal: string;
   reviewOutput?: string;
-  children?: TaskNode | TaskNode[];
+  steps?: TaskNode | TaskNode[];
 }
 
 export function withRiskReview({
   protectedFiles,
   reviewGoal,
   reviewOutput = "risk-review",
-  children
+  steps
 }: WithRiskReviewProps) {
   return protect(
     {
@@ -24,7 +24,7 @@ export function withRiskReview({
       ]
     },
     sequence(
-      children,
+      steps,
       task({
         goal: reviewGoal,
         agent: "pi",

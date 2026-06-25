@@ -7,12 +7,12 @@ import { withTests } from "../examples/shared-tasks/with-tests.js";
 export default function repoDevelopmentWorkflow() {
   return withTests({
     testCommand: "pnpm test",
-    children: [
+    steps: [
       withImplementationPlan({
         planningGoal: "Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the agent runtime that can be completed safely in a single pass",
         planOutput: "repo-improvement-plan",
         fallback: "Preparing a focused improvement plan for the repository...",
-        children: [
+        steps: [
           task({
             goal: "Implement the planned improvement, keeping the change narrow and adding or updating focused tests",
             agent: "pi",
@@ -49,7 +49,7 @@ export default function repoDevelopmentWorkflow() {
         protectedFiles: ["ARCHITECTURE.md", "pnpm-lock.yaml"],
         reviewGoal: "Review the completed repository change for runtime risk, missing validation, and any maintainer follow-up work",
         reviewOutput: "repo-risk-review",
-        children: task({
+        steps: task({
           goal: "Write a short maintainer handoff summary for the completed repository improvement",
           agent: "pi",
           context: [

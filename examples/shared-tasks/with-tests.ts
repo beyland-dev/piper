@@ -2,12 +2,12 @@ import { sequence, task, type TaskNode } from "agent-runtime";
 
 interface WithTestsProps {
   testCommand?: string;
-  children?: TaskNode | TaskNode[];
+  steps?: TaskNode | TaskNode[];
 }
 
-export function withTests({ testCommand = "pnpm test", children }: WithTestsProps) {
+export function withTests({ testCommand = "pnpm test", steps }: WithTestsProps) {
   return sequence(
-    children,
+    steps,
     task({
       goal: `Run \"${testCommand}\" and fix regressions introduced by the recent changes`,
       agent: "pi",

@@ -6,13 +6,13 @@ import { withTests } from "./shared-tasks/with-tests.js";
 export default function designSystemAdherenceWorkflow() {
   return withTests({
     testCommand: "pnpm test -- design-system",
-    children: sequence(
+    steps: sequence(
       withDesignSystemAudit({
         designSystemDocs: ["docs/design-system.md", "packages/ui/tokens.ts", "packages/ui/button.tsx"],
         protectedFiles: ["packages/ui/tokens.ts", "packages/ui/theme.css"],
         auditGoal: "Audit the checkout UI changes for design system adherence before handoff",
         auditOutput: "checkout-design-system-audit",
-        children: task({
+        steps: task({
           goal: "Normalize the checkout screen to existing design system components",
           agent: "pi",
           context: [
