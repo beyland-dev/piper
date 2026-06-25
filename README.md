@@ -1,26 +1,26 @@
 # Piper
 
-A small TypeScript runtime for declaratively orchestrating your agents.
+A framework for declaratively orchestrating your agents.
 
-You write workflows with a TypeScript builder API. The builder creates a task tree and the runtime executes that tree with normal JavaScript control flow. When a task needs real agent work, a harness launches an external command such as `pi` or `copilot`.
+You describe workflows with a TypeScript builder API. The builder creates a task tree, and Piper's orchestrator executes that tree with normal JavaScript control flow. When a task needs agent work, a harness launches one of your configured agent commands, such as `pi` or `copilot`.
 
 ## What this project does
 
 This project gives you:
 
-1. A TypeScript builder authoring model for workflows
-2. A runtime that executes tasks, retries failures, and stores artifacts
-3. Harnesses that hand tasks off to external agents
+1. A TypeScript builder API for creating composable and reusable agent workflows
+2. An orchestrator that executes tasks, retries failures, and stores artifacts
+3. Harnesses that hand tasks off to your agent commands
 4. Validation and guard rails for protected files and post-task checks
 
-This project does not contain the actual coding agent logic. That lives in the external command (i.e. `pi` or `copilot`) invoked by a harness.
+Piper does not contain the actual coding agent logic. That lives in the external command, such as `pi` or `copilot`, invoked by a harness.
 
 ## Project layout
 
 1. `src/cli`: CLI entry point for compiling and running workflows
 2. `src/core`: Task node types and builder primitives like `task`, `parallel`, `protect`, and `recover`
-3. `src/runtime`: The orchestrator and runtime checks
-4. `src/adapters`: Harness bridges to external agents like `pi` and `copilot`
+3. `src/runtime`: Orchestration engine and runtime checks
+4. `src/adapters`: Harness bridges to agent commands like `pi` and `copilot`
 5. `examples`: Sample workflows
 6. `tests`: Vitest coverage
 
@@ -239,8 +239,8 @@ Think about the system like this:
 
 1. TypeScript builders describe the workflow
 2. The CLI compiles and loads it
-3. The executor runs the workflow tree
-4. Harnesses launch the real agent command
+3. The orchestrator runs the workflow tree
+4. Harnesses launch your agent commands
 
 Use `workflow(...)` for ordered work, `parallel(...)` for concurrent work, `protect(...)` for protected-file scopes, and `recover(...)` for `onFailure` retry behavior. `parallel(...)` prints a generic status by default; pass `{ status: "..." }` to customize it.
 

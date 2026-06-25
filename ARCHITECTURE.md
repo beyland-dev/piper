@@ -2,17 +2,17 @@
 
 ## The short version
 
-This repo is a small runtime for agent workflows.
+Piper is a small framework for declaratively orchestrating agent workflows.
 
-You write a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The orchestrator walks that tree. When it hits a task, it calls a harness. The harness starts an external agent command such as `pi` or Copilot CLI.
+You describe a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The orchestrator walks that tree. When it reaches a task, it calls a harness. The harness starts one of your configured agent commands, such as `pi` or Copilot CLI.
 
 That is the whole shape of the system.
 
-There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. The framework itself is the orchestrator, and it does that with normal TypeScript and JavaScript control flow.
+There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. Piper provides the orchestrator, and it runs workflows with normal TypeScript and JavaScript control flow.
 
 ## What the builder API really is
 
-The builder API is a typed way to build a task tree.
+The builder API is the authoring surface for Piper workflows. It is a typed way to build a task tree.
 
 When you write this:
 
@@ -28,7 +28,7 @@ you are really creating a plain object that says, in effect:
 
 The builders in `src/core/builder.ts` create task nodes. They do not talk to a model. They do not schedule work by themselves.
 
-## The actual runtime flow
+## The actual execution flow
 
 From the CLI, the flow is:
 
@@ -38,10 +38,10 @@ From the CLI, the flow is:
 4. The workflow's default export returns a task tree.
 5. `PiperOrchestrator` walks the tree and runs each node.
 6. Task nodes call adapters such as `PiHarness` or `CopilotCliHarness`.
-7. The harness launches the external agent command.
+7. The harness launches the configured agent command.
 8. The orchestrator watches progress, retries failures, runs validations, and records artifacts.
 
-If you want to know where the real work starts, it starts when the harness spawns the external command.
+If you want to know where the real work starts, it starts when the harness spawns the configured agent command.
 
 ## Who is responsible for what
 
@@ -61,7 +61,7 @@ It is glue code.
 
 ### `src/core`
 
-This folder defines the language of the workflow.
+This folder defines the language you use to describe workflows.
 
 It contains:
 
@@ -73,7 +73,7 @@ This layer describes work. It does not perform the work.
 
 ### `src/runtime`
 
-This is the engine.
+This is the orchestration engine.
 
 `PiperOrchestrator` is the center of the repo. It is the code that actually decides how the tree runs.
 
@@ -87,11 +87,11 @@ Its job is to:
 6. run validations
 7. store artifacts so later tasks can read them
 
-This is the part that acts like an orchestrator, but it is just imperative code.
+This is the part that performs orchestration, but it is just imperative code.
 
 ### Harness adapters
 
-Harness adapters are the bridge to real agents.
+Harness adapters are the bridge from Piper workflows to your agent commands.
 
 The important point is this: the framework does not contain the agent brain. The harness hands work off to something else.
 
@@ -159,7 +159,7 @@ The first layer is proactive when the harness supports hooks. The second layer i
 
 ## What this framework is not
 
-It is not a general autonomous planner. It is not a scheduler backed by a hidden LLM. It is not a multi-agent system by itself. It is a deterministic workflow runner with a TypeScript builder authoring layer.
+It is not a general autonomous planner. It is not a scheduler backed by a hidden LLM. It is not a multi-agent system by itself. It is a deterministic orchestration framework with a TypeScript builder authoring layer.
 
 ## How to read an example workflow
 
@@ -173,16 +173,16 @@ In plain words it says:
 4. validate that the playbook mentions certain things
 5. run a protected review step that must respect protected files
 
-That file is not doing the work directly. It is describing the work so the executor can do it.
+That file is not doing the work directly. It is describing the work so the orchestrator can run it.
 
 ## The most important mental model
 
-Think of this repo in two layers.
+Think of this framework in two layers.
 
 Layer 1 is the workflow description. That is the TypeScript builder tree you write.
 
-Layer 2 is the runtime engine. That is the orchestrator plus harnesses.
+Layer 2 is the orchestration engine. That is the orchestrator plus harnesses.
 
-The workflow description says what should happen. The runtime engine makes it happen.
+The workflow description says what should happen. The orchestration engine makes it happen.
 
 The actual coding agent, if there is one, starts outside this repo when a harness launches a command like `pi` or Copilot CLI.
