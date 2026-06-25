@@ -48,7 +48,7 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 
   const workflowArg = values.shift();
   if (!workflowArg) {
-    throw new Error("Usage: agent-run <workflow.agent.tsx> [--workspace <path>] [--verbose] [--dry-run] [--print-compiled]");
+    throw new Error("Usage: agent-run <workflow.agent.ts> [--workspace <path>] [--verbose] [--dry-run] [--print-compiled]");
   }
 
   let workspacePath = cwd;
@@ -96,7 +96,6 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 
 async function compileWorkflow(workflowPath: string): Promise<string> {
   const runtimeEntry = await resolveRuntimeEntry("index");
-  const jsxRuntimeEntry = await resolveRuntimeEntry("jsx-runtime");
 
   const buildResult = await build({
     entryPoints: [workflowPath],
@@ -104,17 +103,12 @@ async function compileWorkflow(workflowPath: string): Promise<string> {
     format: "esm",
     platform: "node",
     write: false,
-    jsx: "automatic",
-    jsxImportSource: "agent-runtime",
     plugins: [
       {
         name: "agent-runtime-self-alias",
         setup(pluginBuild) {
           pluginBuild.onResolve({ filter: /^agent-runtime$/ }, () => ({
             path: runtimeEntry
-          }));
-          pluginBuild.onResolve({ filter: /^agent-runtime\/jsx-runtime$/ }, () => ({
-            path: jsxRuntimeEntry
           }));
         }
       }

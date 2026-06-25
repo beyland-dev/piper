@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Recover, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, WorkflowExecutor, recover, task } from "../src/index.js";
 
 describe("Recover", () => {
   const directories: string[] = [];
@@ -44,16 +44,18 @@ describe("Recover", () => {
     });
 
     const summary = await executor.execute(
-      Recover({
-        maxRetries: 1,
-        fallback: (_error, retry) =>
-          Task({
-            goal: "Recovery task",
-            agent: "mock",
-            "on:complete": () => retry()
-          }),
-        children: [Task({ goal: "Unstable task", agent: "mock", output: "result" })]
-      })
+      recover(
+        {
+          maxRetries: 1,
+          fallback: (_error, retry) =>
+            task({
+              goal: "Recovery task",
+              agent: "mock",
+              "on:complete": () => retry()
+            })
+        },
+        task({ goal: "Unstable task", agent: "mock", output: "result" })
+      )
     );
 
     expect(summary.outputs.result).toBe("Recovered result");

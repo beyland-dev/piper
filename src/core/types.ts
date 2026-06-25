@@ -86,24 +86,24 @@ export interface TaskNodeBase<K extends string, P> {
   props: P;
 }
 
-export interface TaskComponentProps extends TaskProps {}
+export interface TaskNodeProps extends TaskProps {}
 
-export interface ParallelComponentProps extends Omit<ParallelProps, "children"> {
+export interface ParallelNodeProps extends Omit<ParallelProps, "children"> {
   children: TaskNode[];
 }
 
-export interface RecoverComponentProps extends Omit<RecoverProps, "children"> {
+export interface RecoverNodeProps extends Omit<RecoverProps, "children"> {
   children: TaskNode[];
 }
 
-export interface ProtectComponentProps extends Omit<ProtectProps, "children"> {
+export interface ProtectNodeProps extends Omit<ProtectProps, "children"> {
   children: TaskNode[];
 }
 
-export interface TaskElement extends TaskNodeBase<"task", TaskComponentProps> {}
-export interface ParallelNode extends TaskNodeBase<"parallel", ParallelComponentProps> {}
-export interface RecoverNode extends TaskNodeBase<"recover", RecoverComponentProps> {}
-export interface ProtectNode extends TaskNodeBase<"protect", ProtectComponentProps> {}
+export interface TaskElement extends TaskNodeBase<"task", TaskNodeProps> {}
+export interface ParallelNode extends TaskNodeBase<"parallel", ParallelNodeProps> {}
+export interface RecoverNode extends TaskNodeBase<"recover", RecoverNodeProps> {}
+export interface ProtectNode extends TaskNodeBase<"protect", ProtectNodeProps> {}
 export interface SequenceNode extends TaskNodeBase<"sequence", { children: TaskNode[] }> {}
 
 export type TaskNode =

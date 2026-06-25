@@ -27,21 +27,20 @@ describe("CLI end-to-end", () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-cli-"));
     directories.push(workspacePath);
 
-    const workflowPath = join(workspacePath, "demo.agent.tsx");
+    const workflowPath = join(workspacePath, "demo.agent.ts");
     await writeFile(
       workflowPath,
       `
-        import { Parallel, Task, output } from "agent-runtime";
+        import { output, parallel, sequence, task } from "agent-runtime";
 
         export default function DemoWorkflow() {
-          return (
-            <>
-              <Task goal="Plan" agent="mock" output="plan" />
-              <Parallel fallback="waiting">
-                <Task goal="Implement" agent="mock" context={[output("plan")]} />
-                <Task goal="Test" agent="mock" context={[output("plan")]} />
-              </Parallel>
-            </>
+          return sequence(
+            task({ goal: "Plan", agent: "mock", output: "plan" }),
+            parallel(
+              { fallback: "waiting" },
+              task({ goal: "Implement", agent: "mock", context: [output("plan")] }),
+              task({ goal: "Test", agent: "mock", context: [output("plan")] })
+            )
           );
         }
       `,
@@ -68,14 +67,14 @@ describe("CLI end-to-end", () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-cli-"));
     directories.push(workspacePath);
 
-    const workflowPath = join(workspacePath, "demo.agent.tsx");
+    const workflowPath = join(workspacePath, "demo.agent.ts");
     await writeFile(
       workflowPath,
       `
-        import { Task } from "agent-runtime";
+        import { task } from "agent-runtime";
 
         export default function DemoWorkflow() {
-          return <Task goal="Plan" agent="mock" />;
+          return task({ goal: "Plan", agent: "mock" });
         }
       `,
       "utf8"
@@ -95,21 +94,21 @@ describe("CLI end-to-end", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout).toContain("[info] Dry run");
-    expect(stdout).toContain("Task(agent=mock): Plan");
+    expect(stdout).toContain("task(agent=mock): Plan");
   });
 
   it("prints the compiled workflow module", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-cli-"));
     directories.push(workspacePath);
 
-    const workflowPath = join(workspacePath, "demo.agent.tsx");
+    const workflowPath = join(workspacePath, "demo.agent.ts");
     await writeFile(
       workflowPath,
       `
-        import { Task } from "agent-runtime";
+        import { task } from "agent-runtime";
 
         export default function DemoWorkflow() {
-          return <Task goal="Plan" agent="mock" />;
+          return task({ goal: "Plan", agent: "mock" });
         }
       `,
       "utf8"

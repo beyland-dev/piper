@@ -10,10 +10,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./jsx-runtime": {
-      "types": "./dist/jsx-runtime.d.ts",
-      "import": "./dist/jsx-runtime.js"
     }
   },
   "files": [
@@ -27,7 +23,7 @@
   },
   "keywords": [
     "agents",
-    "tsx",
+    "typescript",
     "workflow",
     "pi"
   ],

@@ -11,14 +11,11 @@
     "isolatedModules": true,
     "lib": ["ES2022"],
     "types": ["node"],
-    "jsx": "react-jsx",
-    "jsxImportSource": "agent-runtime",
     "paths": {
-      "agent-runtime": ["./src/index.ts"],
-      "agent-runtime/jsx-runtime": ["./src/jsx-runtime.ts"]
+      "agent-runtime": ["./src/index.ts"]
     },
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "automations/repo-development.agent.tsx"],
+  "include": ["src/**/*.ts", "examples/**/*.ts", "tests/**/*.ts", "automations/**/*.ts"],
   "exclude": ["dist"]
 }
