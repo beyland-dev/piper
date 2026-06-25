@@ -1,10 +1,12 @@
 {
-  "name": "agent-runtime",
+  "name": "piper",
   "version": "0.1.0",
-  "description": "Declarative orchestration framework for Pi-driven coding workflows",
+  "description": "Declarative orchestration framework for CLI-driven coding workflows",
+  "author": "Hawk Ticehurst",
+  "license": "MIT",
   "type": "module",
   "bin": {
-    "agent-run": "./dist/cli/index.js"
+    "piper": "./dist/cli/index.js"
   },
   "exports": {
     ".": {
@@ -19,16 +21,15 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "agent-run": "tsx src/cli/index.ts"
+    "piper": "tsx src/cli/index.ts"
   },
   "keywords": [
     "agents",
     "typescript",
     "workflow",
-    "pi"
+    "pi",
+    "copilot"
   ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "esbuild": "^0.25.5",
     "posthog-node": "5.38.5"

@@ -1,4 +1,4 @@
-import { derive, output, task } from "agent-runtime";
+import { derive, output, task } from "piper";
 
 import { withImplementationPlan } from "../examples/shared-tasks/with-implementation-plan.js";
 import { withRiskReview } from "../examples/shared-tasks/with-risk-review.js";
@@ -9,7 +9,7 @@ export default function repoDevelopmentWorkflow() {
     testCommand: "pnpm test",
     steps: [
       withImplementationPlan({
-        planningGoal: "Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the agent runtime that can be completed safely in a single pass",
+        planningGoal: "Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the Piper runtime that can be completed safely in a single pass",
         planOutput: "repo-improvement-plan",
         fallback: "Preparing a focused improvement plan for the repository...",
         steps: [

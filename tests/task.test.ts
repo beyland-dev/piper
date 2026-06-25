@@ -14,7 +14,7 @@ describe("Task", () => {
   });
 
   it("runs a single task and captures its named output", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-task-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-task-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({

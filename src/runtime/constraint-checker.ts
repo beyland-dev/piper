@@ -1,3 +1,6 @@
+import { stat } from "node:fs/promises";
+import { dirname, join, parse } from "node:path";
+
 import { runCommand } from "../utils/process.js";
 import { shellEscape } from "../utils/shell.js";
 
@@ -7,11 +10,48 @@ export interface GitSnapshot {
 }
 
 async function isGitRepository(workspacePath: string): Promise<boolean> {
+  if (!(await hasGitMetadata(workspacePath))) {
+    return false;
+  }
+
   const result = await runCommand("git rev-parse --is-inside-work-tree", {
     cwd: workspacePath
   });
 
   return result.exitCode === 0;
+}
+
+function isMissingGitMetadataError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "ENOTDIR")
+  );
+}
+
+async function hasGitMetadata(workspacePath: string): Promise<boolean> {
+  let current = workspacePath;
+  const root = parse(workspacePath).root;
+
+  while (true) {
+    try {
+      const metadata = await stat(join(current, ".git"));
+      if (metadata.isDirectory() || metadata.isFile()) {
+        return true;
+      }
+    } catch (error) {
+      if (!isMissingGitMetadataError(error)) {
+        throw error;
+      }
+    }
+
+    if (current === root) {
+      return false;
+    }
+
+    current = dirname(current);
+  }
 }
 
 export async function listModifiedFiles(workspacePath: string): Promise<string[]> {

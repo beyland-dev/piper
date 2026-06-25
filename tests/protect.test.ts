@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MockAdapter, WorkflowExecutor, protect, task } from "../src/index.js";
 
 async function createGitWorkspace(): Promise<string> {
-  const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-protect-"));
+  const workspacePath = await mkdtemp(join(tmpdir(), "piper-protect-"));
   execFileSync("git", ["init"], { cwd: workspacePath });
   execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspacePath });
   execFileSync("git", ["config", "user.name", "Test User"], { cwd: workspacePath });

@@ -14,7 +14,7 @@ describe("MockAdapter", () => {
   });
 
   it("supports retrying a failed attempt and writing files", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-mock-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-mock-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({

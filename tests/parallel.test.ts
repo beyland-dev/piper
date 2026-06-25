@@ -14,7 +14,7 @@ describe("Parallel", () => {
   });
 
   it("runs child tasks concurrently", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-parallel-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-parallel-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({

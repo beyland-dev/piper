@@ -1,6 +1,6 @@
-➜ pnpm run agent-run -- examples/repo-development.agent.tsx --workspace . --verbose
+➜ pnpm run piper -- examples/repo-development.agent.tsx --workspace . --verbose
 
-> agent-runtime@0.1.0 agent-run /var/home/hawkticehurst/Documents/programming/projects/agent-framework
+> piper@0.1.0 piper /var/home/hawkticehurst/Documents/programming/projects/agent-framework
 > tsx src/cli/index.ts -- examples/repo-development.agent.tsx --workspace . --verbose
 
 [run] task-1 (pi, attempt 1) Inspect src/, tests/, and README.md, then choose one small high-leverage improvement for the agent runtime that can be completed safely in a single pass

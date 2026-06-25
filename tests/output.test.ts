@@ -14,7 +14,7 @@ describe("output", () => {
   });
 
   it("passes named output into downstream task context", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-output-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({

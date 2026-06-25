@@ -23,7 +23,7 @@ describe("output dependencies", () => {
   });
 
   it("fails fast when output references an undeclared output", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-output-deps-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-deps-"));
     directories.push(workspacePath);
 
     const executor = new WorkflowExecutor({
@@ -41,7 +41,7 @@ describe("output dependencies", () => {
   });
 
   it("includes a fix hint for unknown outputs", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-output-deps-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-deps-"));
     directories.push(workspacePath);
 
     const executor = new WorkflowExecutor({
@@ -59,7 +59,7 @@ describe("output dependencies", () => {
   });
 
   it("rejects waiting output consumers when the producer task fails", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-output-deps-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-output-deps-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({

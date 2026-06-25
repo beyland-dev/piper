@@ -1,20 +1,21 @@
 #!/usr/bin/env node
 
 import { access } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
 
 import { MockAdapter } from "../adapters/mock-adapter.js";
+import { CopilotCliAdapter } from "../adapters/copilot-cli-adapter.js";
 import { PiAdapter } from "../adapters/pi-adapter.js";
 import { normalizeTree } from "../core/node-utils.js";
 import type { TaskNode } from "../core/types.js";
 import { WorkflowExecutor } from "../runtime/executor.js";
 import { CliReporter, formatTaskTree } from "./output.js";
 
-interface CliOptions {
+interface RunOptions {
   workflowPath: string;
   workspacePath: string;
   verbose: boolean;
@@ -22,11 +23,52 @@ interface CliOptions {
   printCompiled: boolean;
 }
 
+type CliOptions =
+  | {
+      kind: "help";
+    }
+  | ({
+      kind: "run";
+    } & RunOptions);
+
 interface RunCliOptions {
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
   cwd?: string;
 }
+
+const HELP_TEXT = `Usage: piper <workflow.agent.ts> [options]
+
+Compile and run a Piper workflow.
+
+Arguments:
+  workflow.agent.ts       Path to the workflow module.
+
+Options:
+  --workspace <path>      Workspace directory for task execution. Defaults to the current directory.
+  --verbose               Print verbose runtime output.
+  --dry-run               Print the task tree without executing it.
+  --print-compiled        Print the bundled workflow module without executing it.
+  -h, --help              Show this help information.
+
+Examples:
+  piper examples/simple-task.agent.ts
+      Run a workflow using the current directory as the workspace.
+
+  piper examples/simple-task.agent.ts --workspace .
+      Run a workflow with an explicit workspace directory.
+
+  piper examples/simple-task.agent.ts --dry-run
+      Preview the task tree without executing tasks.
+
+  piper examples/simple-task.agent.ts --verbose
+      Include verbose runtime output while tasks execute.
+
+  piper examples/simple-task.agent.ts --print-compiled
+      Inspect the bundled workflow module without executing it.
+
+  pnpm run piper -- examples/simple-task.agent.ts --workspace .
+      Forward arguments through a package manager script.`;
 
 async function resolveRuntimeEntry(relativeBase: string): Promise<string> {
   const sourceCandidate = new URL(`../${relativeBase}.ts`, import.meta.url);
@@ -47,8 +89,8 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
   }
 
   const workflowArg = values.shift();
-  if (!workflowArg) {
-    throw new Error("Usage: agent-run <workflow.agent.ts> [--workspace <path>] [--verbose] [--dry-run] [--print-compiled]");
+  if (!workflowArg || workflowArg === "-h" || workflowArg === "--help") {
+    return { kind: "help" };
   }
 
   let workspacePath = cwd;
@@ -82,10 +124,15 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
       continue;
     }
 
+    if (current === "-h" || current === "--help") {
+      return { kind: "help" };
+    }
+
     throw new Error(`Unknown argument: ${current}`);
   }
 
   return {
+    kind: "run",
     workflowPath: resolve(cwd, workflowArg),
     workspacePath,
     verbose,
@@ -105,9 +152,9 @@ async function compileWorkflow(workflowPath: string): Promise<string> {
     write: false,
     plugins: [
       {
-        name: "agent-runtime-self-alias",
+        name: "piper-self-alias",
         setup(pluginBuild) {
-          pluginBuild.onResolve({ filter: /^agent-runtime$/ }, () => ({
+          pluginBuild.onResolve({ filter: /^(agent-runtime|piper)$/ }, () => ({
             path: runtimeEntry
           }));
         }
@@ -140,14 +187,21 @@ async function loadWorkflow(workflowPath: string): Promise<TaskNode> {
 
 export async function runCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
   const cwd = options.cwd ?? process.cwd();
-  const parsed = parseArguments(argv, cwd);
-  const reporter = new CliReporter({
-    verbose: parsed.verbose,
-    stdout: options.stdout,
-    stderr: options.stderr
-  });
 
   try {
+    const parsed = parseArguments(argv, cwd);
+
+    if (parsed.kind === "help") {
+      (options.stdout ?? process.stdout).write(`${HELP_TEXT}\n`);
+      return 0;
+    }
+
+    const reporter = new CliReporter({
+      verbose: parsed.verbose,
+      stdout: options.stdout,
+      stderr: options.stderr
+    });
+
     if (parsed.printCompiled) {
       (options.stdout ?? process.stdout).write(`${await compileWorkflow(parsed.workflowPath)}\n`);
       return 0;
@@ -170,6 +224,10 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
           command: process.env.PI_COMMAND ?? "pi",
           commandTemplate: process.env.PI_COMMAND_TEMPLATE
         }),
+        new CopilotCliAdapter({
+          command: process.env.COPILOT_COMMAND ?? "copilot",
+          commandTemplate: process.env.COPILOT_COMMAND_TEMPLATE
+        }),
         new MockAdapter()
       ]
     });
@@ -188,6 +246,14 @@ async function main(): Promise<void> {
   process.exitCode = exitCode;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+function isCliEntrypoint(): boolean {
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+}
+
+if (isCliEntrypoint()) {
   void main();
 }

@@ -1,4 +1,4 @@
-import { output, task } from "agent-runtime";
+import { output, task } from "piper";
 
 import { withImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
 import { withRiskReview } from "./shared-tasks/with-risk-review.js";

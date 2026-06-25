@@ -14,7 +14,7 @@ describe("Recover", () => {
   });
 
   it("runs fallback recovery work and retries the failed branch", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-recover-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "piper-recover-"));
     directories.push(workspacePath);
 
     // resolveBehavior tracks global starts so the second invocation of "Unstable task"

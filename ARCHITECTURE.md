@@ -4,7 +4,7 @@
 
 This repo is a small runtime for agent workflows.
 
-You write a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The executor walks that tree. When it hits a task, it calls an adapter. The adapter starts an external agent command such as `pi`.
+You write a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The executor walks that tree. When it hits a task, it calls an adapter. The adapter starts an external agent command such as `pi` or Copilot CLI.
 
 That is the whole shape of the system.
 
@@ -32,12 +32,12 @@ The builders in `src/core/builder.ts` create task nodes. They do not talk to a m
 
 From the CLI, the flow is:
 
-1. `agent-run` reads the workflow path.
+1. `piper` reads the workflow path.
 2. `esbuild` bundles the workflow into one ESM module.
 3. The CLI imports that compiled module from a data URL.
 4. The workflow's default export returns a task tree.
 5. `WorkflowExecutor` walks the tree and runs each node.
-6. Task nodes call adapters such as `PiAdapter`.
+6. Task nodes call adapters such as `PiAdapter` or `CopilotCliAdapter`.
 7. The adapter launches the external agent command.
 8. The executor watches progress, retries failures, runs validations, and records outputs.
 
@@ -95,15 +95,15 @@ Adapters are the bridge to real agents.
 
 The important point is this: the framework does not contain the agent brain. The adapter hands work off to something else.
 
-For `PiAdapter`, that means:
+For `PiAdapter` and `CopilotCliAdapter`, that means:
 
 1. build a prompt from the task goal, context, and retry feedback
-2. spawn the `pi` command
+2. spawn the configured CLI command
 3. stream stdout and stderr back as progress
 4. resolve success or failure
 5. report which files changed
 
-If `pi` itself uses an LLM, tools, or subagents, that behavior lives outside this repo.
+If the external CLI itself uses an LLM, tools, or subagents, that behavior lives outside this repo.
 
 ### `src/utils`
 
@@ -178,4 +178,4 @@ Layer 2 is the runtime engine. That is the executor plus adapters.
 
 The workflow description says what should happen. The runtime engine makes it happen.
 
-The actual coding agent, if there is one, starts outside this repo when an adapter launches a command like `pi`.
+The actual coding agent, if there is one, starts outside this repo when an adapter launches a command like `pi` or Copilot CLI.

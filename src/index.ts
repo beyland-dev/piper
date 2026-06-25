@@ -32,4 +32,7 @@ export type {
 } from "./core/types.js";
 export { MockAdapter } from "./adapters/mock-adapter.js";
 export { PiAdapter } from "./adapters/pi-adapter.js";
+export type { PiAdapterOptions } from "./adapters/pi-adapter.js";
+export { CopilotCliAdapter } from "./adapters/copilot-cli-adapter.js";
+export type { CopilotCliAdapterOptions } from "./adapters/copilot-cli-adapter.js";
 export { WorkflowExecutor } from "./runtime/executor.js";

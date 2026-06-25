@@ -1,6 +1,6 @@
 import type { MaybePromise, Signal, SignalRuntimeContext } from "./types.js";
 
-const SIGNAL_MARKER = Symbol.for("agent-runtime.signal");
+const SIGNAL_MARKER = Symbol.for("piper.signal");
 
 type InternalSignal<T> = Signal<T> & {
   readonly [SIGNAL_MARKER]: true;

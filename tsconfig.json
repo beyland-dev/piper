@@ -12,7 +12,7 @@
     "lib": ["ES2022"],
     "types": ["node"],
     "paths": {
-      "agent-runtime": ["./src/index.ts"]
+      "piper": ["./src/index.ts"]
     },
     "noEmit": true
   },
