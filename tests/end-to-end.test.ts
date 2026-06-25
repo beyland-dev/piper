@@ -286,14 +286,7 @@ describe("CLI end-to-end", () => {
 			let stdout = "";
 			let stderr = "";
 			const exitCode = await runCli(
-				[
-					"generate",
-					"--workspace",
-					workspacePath,
-					"--output",
-					outputPath,
-					"--dry-run-generated",
-				],
+				["generate", "--workspace", workspacePath, "--output", outputPath, "--dry-run-generated"],
 				{
 					stdout: createBufferStream((chunk) => {
 						stdout += chunk;
