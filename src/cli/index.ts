@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { constants as fsConstants, realpathSync } from "node:fs";
+import { constants as fsConstants, existsSync, realpathSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,10 +61,10 @@ interface RunCliOptions {
 	signalTarget?: SignalTarget;
 }
 
-const HELP_TEXT = `Usage: piper <workflow.piper.ts> [options]
-       piper generate <prompt> [options]
+const HELP_TEXT = `Usage: piper <prompt> [options]
+       piper <workflow.piper.ts> [options]
 
-Compile and run a Piper workflow, or generate one from an initial prompt.
+Generate a Piper workflow from an initial prompt, or compile and run a workflow file.
 
 Arguments:
   workflow.piper.ts       Path to the workflow module.
@@ -83,11 +83,11 @@ Options:
   -h, --help              Show this help information.
 
 Examples:
-  piper examples/simple-task.piper.ts
-      Run a workflow using the current directory as the workspace.
+  piper "Fix the failing tests" --workspace . --output workflows/generated.piper.ts
+      Ask a harness to write a workflow file, then validate it.
 
-  piper examples/simple-task.piper.ts --workspace .
-      Run a workflow with an explicit workspace directory.
+  piper "Prepare a migration plan" --dry-run-generated
+      Generate and preview the task tree without executing the generated workflow.
 
   piper examples/simple-task.piper.ts --dry-run
       Preview the task tree without executing tasks.
@@ -98,14 +98,93 @@ Examples:
   piper examples/simple-task.piper.ts --print-compiled
       Inspect the bundled workflow module without executing it.
 
-  piper generate "Fix the failing tests" --workspace . --output workflows/generated.piper.ts
-      Ask a harness to write a workflow file, then validate it.
-
-  piper generate "Prepare a migration plan" --dry-run-generated
-      Generate and preview the task tree without executing the generated workflow.
-
   pnpm exec piper examples/simple-task.piper.ts --workspace .
       Run an installed Piper CLI through a package manager.`;
+
+function isWorkflowPathArgument(value: string, cwd: string): boolean {
+	const resolved = resolve(cwd, value);
+	return existsSync(resolved) || /\.(?:piper\.)?(?:[cm]?ts|[cm]?js)$/.test(value);
+}
+
+function parseGenerateArguments(prompt: string, values: string[], cwd: string): CliOptions {
+	let workspacePath = cwd;
+	let harness = "copilot";
+	let outputPath = resolve(cwd, "generated.piper.ts");
+	let verbose = true;
+	let execute = false;
+	let dryRunGenerated = false;
+
+	while (values.length > 0) {
+		const current = values.shift();
+		if (current === "--workspace") {
+			const workspaceArg = values.shift();
+			if (!workspaceArg) {
+				throw new Error("Missing value for --workspace");
+			}
+			workspacePath = resolve(cwd, workspaceArg);
+			continue;
+		}
+
+		if (current === "--harness") {
+			const harnessArg = values.shift();
+			if (!harnessArg) {
+				throw new Error("Missing value for --harness");
+			}
+			harness = harnessArg;
+			continue;
+		}
+
+		if (current === "--output") {
+			const outputArg = values.shift();
+			if (!outputArg) {
+				throw new Error("Missing value for --output");
+			}
+			outputPath = resolve(cwd, outputArg);
+			continue;
+		}
+
+		if (current === "--verbose") {
+			verbose = true;
+			continue;
+		}
+
+		if (current === "--quiet") {
+			verbose = false;
+			continue;
+		}
+
+		if (current === "--execute") {
+			execute = true;
+			continue;
+		}
+
+		if (current === "--dry-run-generated") {
+			dryRunGenerated = true;
+			continue;
+		}
+
+		if (current === "-h" || current === "--help") {
+			return { kind: "help" };
+		}
+
+		throw new Error(`Unknown argument: ${current}`);
+	}
+
+	if (execute && dryRunGenerated) {
+		throw new Error("--execute and --dry-run-generated cannot be used together");
+	}
+
+	return {
+		kind: "generate",
+		prompt,
+		workspacePath,
+		harness,
+		outputPath,
+		verbose,
+		execute,
+		dryRunGenerated,
+	};
+}
 
 async function resolveRuntimeEntry(relativeBase: string): Promise<string> {
 	const sourceCandidate = new URL(`../${relativeBase}.ts`, import.meta.url);
@@ -136,83 +215,11 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 			return { kind: "help" };
 		}
 
-		let workspacePath = cwd;
-		let harness = "copilot";
-		let outputPath = resolve(cwd, "generated.piper.ts");
-		let verbose = true;
-		let execute = false;
-		let dryRunGenerated = false;
+		return parseGenerateArguments(prompt, values, cwd);
+	}
 
-		while (values.length > 0) {
-			const current = values.shift();
-			if (current === "--workspace") {
-				const workspaceArg = values.shift();
-				if (!workspaceArg) {
-					throw new Error("Missing value for --workspace");
-				}
-				workspacePath = resolve(cwd, workspaceArg);
-				continue;
-			}
-
-			if (current === "--harness") {
-				const harnessArg = values.shift();
-				if (!harnessArg) {
-					throw new Error("Missing value for --harness");
-				}
-				harness = harnessArg;
-				continue;
-			}
-
-			if (current === "--output") {
-				const outputArg = values.shift();
-				if (!outputArg) {
-					throw new Error("Missing value for --output");
-				}
-				outputPath = resolve(cwd, outputArg);
-				continue;
-			}
-
-			if (current === "--verbose") {
-				verbose = true;
-				continue;
-			}
-
-			if (current === "--quiet") {
-				verbose = false;
-				continue;
-			}
-
-			if (current === "--execute") {
-				execute = true;
-				continue;
-			}
-
-			if (current === "--dry-run-generated") {
-				dryRunGenerated = true;
-				continue;
-			}
-
-			if (current === "-h" || current === "--help") {
-				return { kind: "help" };
-			}
-
-			throw new Error(`Unknown argument: ${current}`);
-		}
-
-		if (execute && dryRunGenerated) {
-			throw new Error("--execute and --dry-run-generated cannot be used together");
-		}
-
-		return {
-			kind: "generate",
-			prompt,
-			workspacePath,
-			harness,
-			outputPath,
-			verbose,
-			execute,
-			dryRunGenerated,
-		};
+	if (!isWorkflowPathArgument(firstArg, cwd)) {
+		return parseGenerateArguments(firstArg, values, cwd);
 	}
 
 	let workspacePath = cwd;

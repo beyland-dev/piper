@@ -10,7 +10,7 @@ You describe a workflow with TypeScript builder functions. The CLI compiles that
 
 That is the whole shape of the system.
 
-There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. Piper provides the orchestrator, and it runs workflows with normal TypeScript and JavaScript control flow. The `piper generate` command is an authoring helper: it asks a configured harness to write a workflow file before normal orchestration begins.
+There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. Piper provides the orchestrator, and it runs workflows with normal TypeScript and JavaScript control flow. The default prompt-based CLI experience is an authoring helper: it asks a configured harness to write a workflow file before normal orchestration begins.
 
 ## Project layout
 
@@ -69,7 +69,7 @@ Its job is to:
 4. create the orchestrator with harnesses
 5. run the workflow
 
-It is glue code. In generate mode, it first runs a single authoring task through a configured harness, validates the generated `.piper.ts` file with the same compile/load path, and only executes that generated workflow when explicitly requested.
+It is glue code. In prompt-based authoring mode, it first runs a single authoring task through a configured harness, validates the generated `.piper.ts` file with the same compile/load path, and only executes that generated workflow when explicitly requested.
 
 ### `src/core`
 
@@ -188,7 +188,7 @@ This file is restricted by the active Piper workflow. Do not try to access it th
 
 ## Workflow generation
 
-`piper generate` is a bootstrap path for creating workflow files from a prompt.
+The default prompt-based CLI path is a bootstrap path for creating workflow files from a prompt.
 
 The important boundary is that generation happens before workflow execution:
 

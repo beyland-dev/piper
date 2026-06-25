@@ -196,7 +196,6 @@ describe("CLI end-to-end", () => {
 			let stderr = "";
 			const exitCode = await runCli(
 				[
-					"generate",
 					"Create a workflow for fixing tests",
 					"--workspace",
 					workspacePath,
@@ -244,7 +243,6 @@ describe("CLI end-to-end", () => {
 			let stderr = "";
 			const exitCode = await runCli(
 				[
-					"generate",
 					"Create a workflow for fixing tests",
 					"--workspace",
 					workspacePath,
@@ -324,11 +322,12 @@ describe("CLI end-to-end", () => {
 
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
-		expect(stdout).toContain("Usage: piper <workflow.piper.ts> [options]");
+		expect(stdout).toContain("Usage: piper <prompt> [options]");
 		expect(stdout).toContain("--workspace <path>");
 		expect(stdout).toContain("--quiet");
 		expect(stdout).toContain("--help");
 		expect(stdout).toContain("Examples:");
+		expect(stdout).toContain('piper "Fix the failing tests"');
 		expect(stdout).toContain("piper examples/simple-task.piper.ts --dry-run");
 		expect(stdout).toContain("pnpm exec piper examples/simple-task.piper.ts --workspace .");
 	});
