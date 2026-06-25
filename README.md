@@ -2,7 +2,7 @@
 
 A meta-framework for declaratively orchestrating coding agents.
 
-It does not replace Pi, Copilot, Claude, or Codex; it gives you a declarative way to orchestrate them.
+It does not replace coding agents like Pi, Copilot, Claude, or Codex. It gives you a declarative way to orchestrate them.
 
 You (or an agent) describe workflows with a TypeScript builder API. The builder creates a task tree, and Piper's orchestrator executes that tree with normal JavaScript control flow. When a task needs agent work, Piper launches one of your configured coding agents.
 
