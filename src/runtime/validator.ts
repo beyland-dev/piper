@@ -1,4 +1,4 @@
-import { isSignal } from "../core/use-output.js";
+import { isSignal } from "../core/output.js";
 import type { SignalRuntimeContext, ValidationValue } from "../core/types.js";
 import { runCommand } from "../utils/process.js";
 

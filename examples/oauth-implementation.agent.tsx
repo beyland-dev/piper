@@ -1,8 +1,8 @@
-import { ErrorBoundary, Guarded, Suspense, Task, useOutput } from "agent-runtime";
+import { Parallel, Protect, Recover, Task, output } from "agent-runtime";
 
 export default function OAuthWorkflow() {
   return (
-    <ErrorBoundary
+    <Recover
       maxRetries={2}
       fallback={(error, retry) => (
         <Task
@@ -23,26 +23,26 @@ export default function OAuthWorkflow() {
         output="plan"
       />
 
-      <Suspense fallback="Waiting for implementation tasks to complete...">
+      <Parallel fallback="Waiting for implementation tasks to complete...">
         <Task
           goal="Implement the OAuth controller based on the plan"
           agent="pi"
-          context={[useOutput("plan")]}
+          context={[output("plan")]}
         />
         <Task
           goal="Write tests for the OAuth flow"
           agent="pi"
-          context={[useOutput("plan")]}
+          context={[output("plan")]}
         />
-      </Suspense>
+      </Parallel>
 
-      <Guarded protectedFiles={["auth_legacy.ts"]} validate={["node -e \"process.exit(0)\""]}>
+      <Protect protectedFiles={["auth_legacy.ts"]} validate={["node -e \"process.exit(0)\""]}>
         <Task
           goal="Review the OAuth implementation for security issues"
           agent="pi"
           context={["Look for token leakage, missing CSRF protection, and insecure redirect handling."]}
         />
-      </Guarded>
-    </ErrorBoundary>
+      </Protect>
+    </Recover>
   );
 }

@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ErrorBoundary, MockAdapter, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, Recover, Task, WorkflowExecutor } from "../src/index.js";
 
-describe("ErrorBoundary", () => {
+describe("Recover", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -14,15 +14,23 @@ describe("ErrorBoundary", () => {
   });
 
   it("runs fallback recovery work and retries the failed branch", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-boundary-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-recover-"));
     directories.push(workspacePath);
 
+    // resolveBehavior tracks global starts so the second invocation of "Unstable task"
+    // (triggered by Recover's retry) succeeds even though each new handle starts at attempt 1.
+    let unstableStarts = 0;
     const adapter = new MockAdapter({
+      resolveBehavior: ({ goal }) => {
+        if (goal === "Unstable task") {
+          unstableStarts += 1;
+          return unstableStarts === 1
+            ? { failOnAttempt: 1, output: "Recovered result" }
+            : { output: "Recovered result" };
+        }
+        return undefined;
+      },
       behaviors: {
-        "Unstable task": {
-          failOnAttempt: 1,
-          output: "Recovered result"
-        },
         "Recovery task": {
           output: "Recovery complete"
         }
@@ -36,7 +44,7 @@ describe("ErrorBoundary", () => {
     });
 
     const summary = await executor.execute(
-      ErrorBoundary({
+      Recover({
         maxRetries: 1,
         fallback: (_error, retry) =>
           Task({

@@ -31,16 +31,16 @@ describe("CLI end-to-end", () => {
     await writeFile(
       workflowPath,
       `
-        import { Suspense, Task, useOutput } from "agent-runtime";
+        import { Parallel, Task, output } from "agent-runtime";
 
         export default function DemoWorkflow() {
           return (
             <>
               <Task goal="Plan" agent="mock" output="plan" />
-              <Suspense fallback="waiting">
-                <Task goal="Implement" agent="mock" context={[useOutput("plan")]} />
-                <Task goal="Test" agent="mock" context={[useOutput("plan")]} />
-              </Suspense>
+              <Parallel fallback="waiting">
+                <Task goal="Implement" agent="mock" context={[output("plan")]} />
+                <Task goal="Test" agent="mock" context={[output("plan")]} />
+              </Parallel>
             </>
           );
         }

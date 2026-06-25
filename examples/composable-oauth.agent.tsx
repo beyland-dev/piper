@@ -1,4 +1,4 @@
-import { Task, useOutput } from "agent-runtime";
+import { Task, output } from "agent-runtime";
 
 import { WithImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
 import { WithRiskReview } from "./shared-tasks/with-risk-review.js";
@@ -21,7 +21,7 @@ export default function ComposableOAuthWorkflow() {
             goal="Add the OAuth login endpoint and callback handling"
             agent="pi"
             context={[
-              useOutput("oauth-plan"),
+              output("oauth-plan"),
               "Preserve existing session semantics and redirect behavior."
             ]}
           />
@@ -29,7 +29,7 @@ export default function ComposableOAuthWorkflow() {
             goal="Add the OAuth token refresh endpoint and related validation"
             agent="pi"
             context={[
-              useOutput("oauth-plan"),
+              output("oauth-plan"),
               "Keep refresh token handling compatible with the rollout plan."
             ]}
           />

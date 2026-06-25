@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Guarded, MockAdapter, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, Protect, Task, WorkflowExecutor } from "../src/index.js";
 
 async function createGitWorkspace(): Promise<string> {
-  const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-guarded-"));
+  const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-protect-"));
   execFileSync("git", ["init"], { cwd: workspacePath });
   execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspacePath });
   execFileSync("git", ["config", "user.name", "Test User"], { cwd: workspacePath });
@@ -18,7 +18,7 @@ async function createGitWorkspace(): Promise<string> {
   return workspacePath;
 }
 
-describe("Guarded", () => {
+describe("Protect", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -61,7 +61,7 @@ describe("Guarded", () => {
     });
 
     await executor.execute(
-      Guarded({
+      Protect({
         protectedFiles: ["auth_legacy.ts"],
         children: [Task({ goal: "Review task", agent: "mock" })]
       })

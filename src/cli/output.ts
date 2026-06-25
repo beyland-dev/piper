@@ -72,19 +72,19 @@ function describeNode(node: TaskNode, depth: number): string[] {
       ];
     case "sequence":
       return node.props.children.flatMap((child) => describeNode(child, depth));
-    case "suspense":
+    case "parallel":
       return [
-        `${prefix}Suspense${typeof node.props.fallback === "string" ? ` fallback="${node.props.fallback}"` : ""}`,
+        `${prefix}Parallel${typeof node.props.fallback === "string" ? ` fallback="${node.props.fallback}"` : ""}`,
         ...node.props.children.flatMap((child) => describeNode(child, depth + 1))
       ];
-    case "error-boundary":
+    case "recover":
       return [
-        `${prefix}ErrorBoundary(maxRetries=${node.props.maxRetries ?? 3})`,
+        `${prefix}Recover(maxRetries=${node.props.maxRetries ?? 3})`,
         ...node.props.children.flatMap((child) => describeNode(child, depth + 1))
       ];
-    case "guarded":
+    case "protect":
       return [
-        `${prefix}Guarded(protected=${node.props.protectedFiles.join(", ")})`,
+        `${prefix}Protect(protected=${node.props.protectedFiles.join(", ")})`,
         ...node.props.children.flatMap((child) => describeNode(child, depth + 1))
       ];
     default:

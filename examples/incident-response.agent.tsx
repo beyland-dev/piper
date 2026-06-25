@@ -1,4 +1,4 @@
-import { ErrorBoundary, Guarded, Suspense, Task, computed, useOutput } from "agent-runtime";
+import { Parallel, Protect, Recover, Task, derive, output } from "agent-runtime";
 
 export default function IncidentResponseWorkflow() {
   return (
@@ -16,7 +16,7 @@ export default function IncidentResponseWorkflow() {
         }}
       />
 
-      <Suspense
+      <Parallel
         fallback={
           <Task
             goal="Draft a temporary status update while the investigation is in progress"
@@ -31,15 +31,15 @@ export default function IncidentResponseWorkflow() {
           goal="Implement the smallest safe hotfix for the incident"
           agent="pi"
           context={[
-            useOutput("incident-brief"),
-            computed(async ({ readTaskResult }) => {
+            output("incident-brief"),
+            derive(async ({ readTaskResult }) => {
               const incident = await readTaskResult("incident-brief");
               return `Prefer files already implicated by the brief: ${incident.modifiedFiles.join(", ") || "none"}`;
             }, "incident file focus")
           ]}
           output="hotfix"
           validate={[
-            computed(
+            derive(
               async ({ readOutput }) => (await readOutput("incident-brief")).toLowerCase().includes("root cause"),
               "incident brief identifies a root cause"
             )
@@ -52,12 +52,12 @@ export default function IncidentResponseWorkflow() {
         <Task
           goal="Prepare a customer-facing incident update and next-step summary"
           agent="pi"
-          context={[useOutput("incident-brief")]}
+          context={[output("incident-brief")]}
           output="status-update"
         />
-      </Suspense>
+      </Parallel>
 
-      <ErrorBoundary
+      <Recover
         maxRetries={2}
         fallback={(error, retry) => (
           <Task
@@ -68,25 +68,25 @@ export default function IncidentResponseWorkflow() {
           />
         )}
       >
-        <Guarded
+        <Protect
           protectedFiles={["db/schema.sql", "infra/secrets.env"]}
           validate={[
-            computed(async ({ readOutput }) => (await readOutput("postmortem-outline")).trim().length > 40, "postmortem outline exists")
+            derive(async ({ readOutput }) => (await readOutput("postmortem-outline")).trim().length > 40, "postmortem outline exists")
           ]}
         >
           <Task
             goal="Verify the hotfix, add a regression test, and draft a short postmortem outline"
             agent="pi"
             context={[
-              useOutput("hotfix"),
-              useOutput("status-update"),
+              output("hotfix"),
+              output("status-update"),
               "Call out residual risk, missing test coverage, and any follow-up work that should be ticketed."
             ]}
             constraints={["do not modify db/schema.sql", "do not modify infra/secrets.env"]}
             output="postmortem-outline"
           />
-        </Guarded>
-      </ErrorBoundary>
+        </Protect>
+      </Recover>
     </>
   );
 }

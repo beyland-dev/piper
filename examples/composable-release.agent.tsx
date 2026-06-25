@@ -1,4 +1,4 @@
-import { Task, computed, useOutput } from "agent-runtime";
+import { Task, derive, output } from "agent-runtime";
 
 import { WithImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
 import { WithRiskReview } from "./shared-tasks/with-risk-review.js";
@@ -15,7 +15,7 @@ export default function ComposableReleaseWorkflow() {
         <Task
           goal="Write release notes for the current branch"
           agent="pi"
-          context={[useOutput("release-plan")]}
+          context={[output("release-plan")]}
           output="release-notes"
         />
 
@@ -23,8 +23,8 @@ export default function ComposableReleaseWorkflow() {
           goal="Prepare rollout instructions and smoke checks"
           agent="pi"
           context={[
-            useOutput("release-plan"),
-            computed(async ({ readTaskResult }) => {
+            output("release-plan"),
+            derive(async ({ readTaskResult }) => {
               const plan = await readTaskResult("release-plan");
               return `The release plan touched ${plan.modifiedFiles.length} files while being prepared.`;
             }, "release plan file count")
@@ -42,8 +42,8 @@ export default function ComposableReleaseWorkflow() {
           goal="Check the release artifacts for missing operator guidance"
           agent="pi"
           context={[
-            useOutput("release-notes"),
-            useOutput("rollout-guide"),
+            output("release-notes"),
+            output("rollout-guide"),
             "Look for missing rollback notes, smoke checks, and on-call instructions."
           ]}
         />

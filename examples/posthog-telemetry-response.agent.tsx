@@ -1,6 +1,6 @@
 import { PostHog } from "posthog-node";
 
-import { Suspense, Task, computed, useOutput } from "agent-runtime";
+import { Parallel, Task, derive, output } from "agent-runtime";
 
 async function loadPostHogContext() {
   const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
@@ -44,18 +44,18 @@ export default function PostHogTelemetryResponseWorkflow() {
         goal="Summarize production behavior from PostHog feature flag and payload context"
         agent="pi"
         context={[
-          computed(loadPostHogContext, "PostHog production context"),
+          derive(loadPostHogContext, "PostHog production context"),
           "Identify rollout state, suspicious flag combinations, and user cohorts that need extra care."
         ]}
         output="posthog-telemetry-brief"
       />
 
-      <Suspense fallback="Preparing remediation and stakeholder guidance from PostHog context...">
+      <Parallel fallback="Preparing remediation and stakeholder guidance from PostHog context...">
         <Task
           goal="Implement the smallest safe change suggested by the PostHog telemetry brief"
           agent="pi"
           context={[
-            useOutput("posthog-telemetry-brief"),
+            output("posthog-telemetry-brief"),
             "Prefer changes gated by existing feature flags and preserve rollback behavior."
           ]}
           output="telemetry-fix"
@@ -65,23 +65,23 @@ export default function PostHogTelemetryResponseWorkflow() {
           goal="Draft an operator update that explains the observed production flag state"
           agent="pi"
           context={[
-            useOutput("posthog-telemetry-brief"),
+            output("posthog-telemetry-brief"),
             "Call out whether rollout should continue, pause, or roll back."
           ]}
           output="operator-update"
         />
-      </Suspense>
+      </Parallel>
 
       <Task
         goal="Verify the telemetry-driven change and capture follow-up instrumentation gaps"
         agent="pi"
         context={[
-          useOutput("telemetry-fix"),
-          useOutput("operator-update"),
+          output("telemetry-fix"),
+          output("operator-update"),
           "Make sure the validation explains which PostHog signals should be watched after deploy."
         ]}
         validate={[
-          computed(async ({ readOutput }) => (await readOutput("operator-update")).toLowerCase().includes("rollout"), "operator update mentions rollout")
+          derive(async ({ readOutput }) => (await readOutput("operator-update")).toLowerCase().includes("rollout"), "operator update mentions rollout")
         ]}
       />
     </>

@@ -1,9 +1,9 @@
 import { normalizeChildren } from "./node-utils.js";
-import type { GuardedNode, GuardedProps } from "./types.js";
+import type { ProtectNode, ProtectProps } from "./types.js";
 
-export function Guarded(props: GuardedProps): GuardedNode {
+export function Protect(props: ProtectProps): ProtectNode {
   return {
-    kind: "guarded",
+    kind: "protect",
     props: {
       ...props,
       children: normalizeChildren(props.children)

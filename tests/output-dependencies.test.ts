@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Suspense, Task, WorkflowExecutor, useOutput } from "../src/index.js";
+import { MockAdapter, Parallel, Task, WorkflowExecutor, output } from "../src/index.js";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 200): Promise<T> {
   return Promise.race([
@@ -22,7 +22,7 @@ describe("output dependencies", () => {
     await Promise.all(directories.map((directory) => rm(directory, { recursive: true, force: true })));
   });
 
-  it("fails fast when useOutput references an undeclared output", async () => {
+  it("fails fast when output references an undeclared output", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-output-deps-"));
     directories.push(workspacePath);
 
@@ -34,7 +34,7 @@ describe("output dependencies", () => {
 
     await expect(
       withTimeout(
-        executor.execute(Task({ goal: "Implement feature", agent: "mock", context: [useOutput("missing")] })),
+        executor.execute(Task({ goal: "Implement feature", agent: "mock", context: [output("missing")] })),
         150
       )
     ).rejects.toThrow('Unknown output "missing". No task declares output="missing".');
@@ -52,7 +52,7 @@ describe("output dependencies", () => {
 
     await expect(
       withTimeout(
-        executor.execute(Task({ goal: "Implement feature", agent: "mock", context: [useOutput("missing")] })),
+        executor.execute(Task({ goal: "Implement feature", agent: "mock", context: [output("missing")] })),
         150
       )
     ).rejects.toThrow('Add or fix output="missing" on an upstream task.');
@@ -91,10 +91,10 @@ describe("output dependencies", () => {
     await expect(
       withTimeout(
         executor.execute(
-          Suspense({
+          Parallel({
             children: [
               Task({ goal: "Create plan", agent: "mock", output: "plan" }),
-              Task({ goal: "Implement feature", agent: "mock", context: [useOutput("plan")] })
+              Task({ goal: "Implement feature", agent: "mock", context: [output("plan")] })
             ]
           })
         ),

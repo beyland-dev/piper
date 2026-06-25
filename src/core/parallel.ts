@@ -1,9 +1,9 @@
 import { normalizeChildren } from "./node-utils.js";
-import type { SuspenseNode, SuspenseProps } from "./types.js";
+import type { ParallelNode, ParallelProps } from "./types.js";
 
-export function Suspense(props: SuspenseProps): SuspenseNode {
+export function Parallel(props: ParallelProps): ParallelNode {
   return {
-    kind: "suspense",
+    kind: "parallel",
     props: {
       ...props,
       children: normalizeChildren(props.children)

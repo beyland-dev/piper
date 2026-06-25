@@ -1,4 +1,4 @@
-import { Guarded, Task, computed, type TaskNode } from "agent-runtime";
+import { Protect, Task, derive, type TaskNode } from "agent-runtime";
 
 interface WithDesignSystemAuditProps {
   designSystemDocs?: string[];
@@ -16,10 +16,10 @@ export function WithDesignSystemAudit({
   children
 }: WithDesignSystemAuditProps) {
   return (
-    <Guarded
+    <Protect
       protectedFiles={protectedFiles}
       validate={[
-        computed(async ({ readOutput }) => {
+        derive(async ({ readOutput }) => {
           const audit = (await readOutput(auditOutput)).toLowerCase();
           return audit.includes("design system") && (audit.includes("token") || audit.includes("component"));
         }, `${auditOutput} checks design system primitives`)
@@ -39,6 +39,6 @@ export function WithDesignSystemAudit({
           output={auditOutput}
         />
       </>
-    </Guarded>
+    </Protect>
   );
 }

@@ -78,7 +78,7 @@ Its job is to:
 
 1. accept TSX component calls
 2. turn fragments into sequences
-3. call component functions like `Task`, `Suspense`, `Guarded`, and `ErrorBoundary`
+3. call component functions like `Task`, `Parallel`, `Protect`, and `Recover`
 
 It does not execute tasks.
 
@@ -89,8 +89,8 @@ This folder defines the language of the workflow.
 It contains:
 
 1. node types
-2. helper components like `Task`, `Suspense`, `Guarded`, and `ErrorBoundary`
-3. signal helpers like `useOutput` and `computed`
+2. helper components like `Task`, `Parallel`, `Protect`, and `Recover`
+3. signal helpers like `output` and `derive`
 
 This layer describes work.
 It does not perform the work.
@@ -106,7 +106,7 @@ Its job is to:
 
 1. walk the tree
 2. run sequence nodes in order
-3. run `Suspense` children in parallel
+3. run `Parallel` children in parallel
 4. handle retries for failed tasks
 5. enforce protected file constraints
 6. run validations
@@ -155,28 +155,26 @@ It says:
 
 These let later tasks depend on earlier tasks.
 
-`useOutput("name")` means "wait for that task's text output and use it here."
+`output("name")` means "wait for that task's text output and use it here."
 
-`computed(...)` means "run a little function at runtime to build a context string or validation value."
+`derive(...)` means "run a little function at runtime to build a context string or validation value."
 
-### `Suspense`
+### `Parallel`
 
-In this repo, `Suspense` is not React data fetching.
-
-It means:
+In this repo, `Parallel` means:
 
 1. show a fallback message or fallback node
 2. run child tasks in parallel
 
-### `ErrorBoundary`
+### `Recover`
 
 Catch a failure, run fallback logic, and optionally retry.
 
-### `Guarded`
+### `Protect`
 
 Run tasks with extra safety rules.
 
-This is where you can say certain files must not be changed, and where extra validations can run after the guarded block finishes.
+This is where you can say certain files must not be changed, and where extra validations can run after the protected block finishes.
 
 ## What this framework is not
 

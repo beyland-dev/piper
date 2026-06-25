@@ -1,4 +1,4 @@
-import { Task, useOutput } from "agent-runtime";
+import { Task, output } from "agent-runtime";
 
 import { WithDesignSystemAudit } from "./shared-tasks/with-design-system-audit.js";
 import { WithTests } from "./shared-tasks/with-tests.js";
@@ -28,7 +28,7 @@ export default function DesignSystemAdherenceWorkflow() {
           goal="Create follow-up tickets from the design system audit findings"
           agent="pi"
           context={[
-            useOutput("checkout-design-system-audit"),
+            output("checkout-design-system-audit"),
             "Group related adherence issues and include recommended system primitives."
           ]}
         />

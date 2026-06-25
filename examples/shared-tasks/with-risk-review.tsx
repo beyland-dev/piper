@@ -1,4 +1,4 @@
-import { Guarded, Task, computed, type TaskNode } from "agent-runtime";
+import { Protect, Task, derive, type TaskNode } from "agent-runtime";
 
 interface WithRiskReviewProps {
   protectedFiles: string[];
@@ -14,10 +14,10 @@ export function WithRiskReview({
   children
 }: WithRiskReviewProps) {
   return (
-    <Guarded
+    <Protect
       protectedFiles={protectedFiles}
       validate={[
-        computed(async ({ readOutput }) => {
+        derive(async ({ readOutput }) => {
           const review = (await readOutput(reviewOutput)).toLowerCase();
           return review.includes("risk") || review.includes("rollback") || review.includes("follow-up");
         }, `${reviewOutput} captures risk guidance`)
@@ -35,6 +35,6 @@ export function WithRiskReview({
           output={reviewOutput}
         />
       </>
-    </Guarded>
+    </Protect>
   );
 }
