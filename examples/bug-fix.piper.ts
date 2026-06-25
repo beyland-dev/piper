@@ -1,4 +1,4 @@
-import { protect, task } from "piper";
+import { protect, task } from "@beyland/piper";
 
 export default function bugFixWorkflow() {
   return protect(

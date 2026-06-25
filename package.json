@@ -1,7 +1,7 @@
 {
-  "name": "piper",
+  "name": "@beyland/piper",
   "version": "0.1.0",
-  "description": "Declarative orchestration framework for CLI-driven coding workflows",
+  "description": "A meta-framework for declaratively orchestrating coding agents",
   "author": "Hawk Ticehurst",
   "license": "MIT",
   "type": "module",
@@ -19,24 +19,29 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "fmt": "oxfmt --write --config .oxfmt.json .",
+    "fmt:check": "oxfmt --check --config .oxfmt.json .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "piper": "tsx src/cli/index.ts"
+    "piper": "npm run build --silent && node dist/cli/index.js"
   },
   "keywords": [
     "agents",
+    "coding-agents",
+    "meta-framework",
     "typescript",
     "workflow",
     "pi",
-    "copilot"
+    "copilot",
+    "claude",
+    "codex"
   ],
   "dependencies": {
-    "esbuild": "^0.25.5",
-    "posthog-node": "5.38.5"
+    "esbuild": "^0.25.5"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",
-    "tsx": "^4.20.3",
+    "oxfmt": "^0.56.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   }

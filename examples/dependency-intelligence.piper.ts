@@ -1,4 +1,4 @@
-import { runtimeValue, artifact, workflow, task } from "piper";
+import { runtimeValue, artifact, workflow, task } from "@beyland/piper";
 
 async function fetchPackageContext(packageName: string) {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`);

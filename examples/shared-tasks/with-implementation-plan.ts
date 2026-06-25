@@ -1,4 +1,4 @@
-import { parallel, workflow, task, type TaskNode } from "piper";
+import { parallel, workflow, task, type TaskNode } from "@beyland/piper";
 
 interface WithImplementationPlanProps {
   planningGoal: string;

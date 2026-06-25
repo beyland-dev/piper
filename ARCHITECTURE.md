@@ -2,13 +2,25 @@
 
 ## The short version
 
-Piper is a small framework for declaratively orchestrating agent workflows.
+Piper is a meta-framework for declaratively orchestrating coding agents.
 
-You describe a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The orchestrator walks that tree. When it reaches a task, it calls a harness. The harness starts one of your configured agent commands, such as `pi` or Copilot CLI.
+Piper is almost a meta-harness: it does not replace Pi, Copilot, Claude, or Codex; it gives you a declarative way to orchestrate them.
+
+You describe a workflow with TypeScript builder functions. The CLI compiles that TypeScript file. The compiled code returns a plain object tree. The orchestrator walks that tree. When it reaches a task, it calls a harness. The harness starts one of your configured coding agent commands, such as `pi` or Copilot CLI.
 
 That is the whole shape of the system.
 
 There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. Piper provides the orchestrator, and it runs workflows with normal TypeScript and JavaScript control flow.
+
+## Project layout
+
+1. `src/cli`: CLI entry point for compiling and running workflows
+2. `src/core`: Task node types and builder primitives like `task`, `parallel`, `protect`, and `recover`
+3. `src/runtime`: orchestration engine and runtime checks
+4. `src/adapters`: harness bridges to coding agent commands like `pi` and `copilot`
+5. `automations`: Piper workflows used to develop this repo
+6. `examples`: sample workflows
+7. `tests`: Vitest coverage
 
 ## What the builder API really is
 
@@ -38,10 +50,10 @@ From the CLI, the flow is:
 4. The workflow's default export returns a task tree.
 5. `PiperOrchestrator` walks the tree and runs each node.
 6. Task nodes call adapters such as `PiHarness` or `CopilotCliHarness`.
-7. The harness launches the configured agent command.
+7. The harness launches the configured coding agent command.
 8. The orchestrator watches progress, retries failures, runs validations, and records artifacts.
 
-If you want to know where the real work starts, it starts when the harness spawns the configured agent command.
+If you want to know where the real work starts, it starts when the harness spawns the configured coding agent command.
 
 ## Who is responsible for what
 
@@ -91,7 +103,7 @@ This is the part that performs orchestration, but it is just imperative code.
 
 ### Harness adapters
 
-Harness adapters are the bridge from Piper workflows to your agent commands.
+Harness adapters are the bridge from Piper workflows to your coding agent commands.
 
 The important point is this: the framework does not contain the agent brain. The harness hands work off to something else.
 
@@ -156,6 +168,23 @@ Protected files are enforced in two layers:
 2. Piper still checks git status after task attempts and reverts newly modified protected files.
 
 The first layer is proactive when the harness supports hooks. The second layer is reactive and remains useful as defense in depth.
+
+Command harnesses receive:
+
+1. `AGENT_CONSTRAINTS`
+2. `AGENT_PROTECTED_FILES`
+3. `<HARNESS>_CONSTRAINTS`, for example `PI_CONSTRAINTS`
+4. `<HARNESS>_PROTECTED_FILES`, for example `COPILOT_PROTECTED_FILES`
+
+The same values are available in command templates as `{constraints}` and `{protectedFiles}`.
+
+For now, Piper's recommended proactive enforcement is intentionally scoped to structured file tools: read, edit, and write/create. Bash/terminal access remains covered only by Piper's post-run protected-file checks.
+
+A denial message should tell the harness what happened and discourage workarounds:
+
+```txt
+This file is restricted by the active Piper workflow. Do not try to access it through another tool or alternate path. Continue the task using the remaining available context.
+```
 
 ## What this framework is not
 

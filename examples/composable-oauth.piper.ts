@@ -1,4 +1,4 @@
-import { artifact, task } from "piper";
+import { artifact, task } from "@beyland/piper";
 
 import { withImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
 import { withRiskReview } from "./shared-tasks/with-risk-review.js";

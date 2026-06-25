@@ -48,7 +48,7 @@ describe("CLI end-to-end", () => {
     await writeFile(
       workflowPath,
       `
-        import { artifact, parallel, workflow, task } from "piper";
+        import { artifact, parallel, workflow, task } from "@beyland/piper";
 
         export default function DemoWorkflow() {
           return workflow(
@@ -89,7 +89,7 @@ describe("CLI end-to-end", () => {
     await writeFile(
       workflowPath,
       `
-        import { task } from "piper";
+        import { task } from "@beyland/piper";
 
         export default function DemoWorkflow() {
           return task({ goal: "Plan", harness: "mock" });
@@ -124,7 +124,7 @@ describe("CLI end-to-end", () => {
     await writeFile(
       workflowPath,
       `
-        import { task } from "piper";
+        import { task } from "@beyland/piper";
 
         export default function DemoWorkflow() {
           return task({ goal: "Plan with Copilot", harness: "copilot" });
@@ -169,7 +169,7 @@ describe("CLI end-to-end", () => {
     await writeFile(
       workflowPath,
       `
-        import { task } from "piper";
+        import { task } from "@beyland/piper";
 
         export default function DemoWorkflow() {
           return task({ goal: "Plan", harness: "mock" });
@@ -215,7 +215,7 @@ describe("CLI end-to-end", () => {
     expect(stdout).toContain("--help");
     expect(stdout).toContain("Examples:");
     expect(stdout).toContain("piper examples/simple-task.piper.ts --dry-run");
-    expect(stdout).toContain("pnpm run piper -- examples/simple-task.piper.ts --workspace .");
+    expect(stdout).toContain("pnpm exec piper examples/simple-task.piper.ts --workspace .");
   });
 
   it("prints the compiled workflow module", async () => {
@@ -226,7 +226,7 @@ describe("CLI end-to-end", () => {
     await writeFile(
       workflowPath,
       `
-        import { task } from "piper";
+        import { task } from "@beyland/piper";
 
         export default function DemoWorkflow() {
           return task({ goal: "Plan", harness: "mock" });

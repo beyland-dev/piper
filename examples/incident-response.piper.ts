@@ -1,4 +1,4 @@
-import { runtimeValue, artifact, parallel, protect, recover, workflow, task } from "piper";
+import { runtimeValue, artifact, parallel, protect, recover, workflow, task } from "@beyland/piper";
 
 export default function incidentResponseWorkflow() {
   return workflow(

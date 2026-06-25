@@ -1,47 +1,56 @@
 # Piper
 
-A framework for declaratively orchestrating your agents.
+A meta-framework for declaratively orchestrating coding agents.
 
-You describe workflows with a TypeScript builder API. The builder creates a task tree, and Piper's orchestrator executes that tree with normal JavaScript control flow. When a task needs agent work, a harness launches one of your configured agent commands, such as `pi` or `copilot`.
+It does not replace Pi, Copilot, Claude, or Codex; it gives you a declarative way to orchestrate them.
 
-## What this project does
-
-This project gives you:
-
-1. A TypeScript builder API for creating composable and reusable agent workflows
-2. An orchestrator that executes tasks, retries failures, and stores artifacts
-3. Harnesses that hand tasks off to your agent commands
-4. Validation and guard rails for protected files and post-task checks
-
-Piper does not contain the actual coding agent logic. That lives in the external command, such as `pi` or `copilot`, invoked by a harness.
-
-## Project layout
-
-1. `src/cli`: CLI entry point for compiling and running workflows
-2. `src/core`: Task node types and builder primitives like `task`, `parallel`, `protect`, and `recover`
-3. `src/runtime`: Orchestration engine and runtime checks
-4. `src/adapters`: Harness bridges to agent commands like `pi` and `copilot`
-5. `examples`: Sample workflows
-6. `tests`: Vitest coverage
+You (or an agent) describe workflows with a TypeScript builder API. The builder creates a task tree, and Piper's orchestrator executes that tree with normal JavaScript control flow. When a task needs agent work, Piper launches one of your configured coding agents.
 
 ## Install
 
 ```bash
-pnpm install
+# Install using pnpm
+pnpm add -D @beyland/piper
+
+# Install using npm
+npm install --save-dev @beyland/piper
 ```
 
-## Common commands
+The package provides:
+
+1. A `piper` CLI for running workflow files
+2. A TypeScript SDK exported from `@beyland/piper`
+
+## At a glance
+
+### Define a workflow
+
+```ts
+import { artifact, task, workflow } from "@beyland/piper";
+
+const plan = artifact("plan");
+
+export default workflow(
+  task({ goal: "Create plan", harness: "copilot", artifact: plan }),
+  task({ goal: "Implement feature", harness: "copilot", context: [plan.value()] })
+);
+```
+
+The `artifact("plan")` function call creates a typed artifact reference. Passing it as `artifact` publishes that task result; passing `plan.value()` in `context` waits for and reads that result.
+
+### Run it with the CLI
 
 ```bash
-pnpm build
-pnpm typecheck
-pnpm test
-pnpm run piper -- examples/simple-task.piper.ts --workspace .
+piper workflows/simple-task.piper.ts --workspace .
 ```
 
-## Harnesses
+Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. You can point runs at a different artifact root:
 
-Tasks choose a harness with the `harness` property:
+```bash
+PIPER_ARTIFACT_ROOT=/tmp/piper-runs piper workflows/simple-task.piper.ts
+```
+
+### Choose the agent harness per task
 
 ```ts
 task({ goal: "Implement the feature", harness: "copilot" });
@@ -49,63 +58,34 @@ task({ goal: "Implement the feature", harness: "copilot" });
 
 Built-in harnesses:
 
-1. `mock`: Deterministic test harness
-2. `pi`: Launches `PI_COMMAND` or `pi`
-3. `copilot`: Launches `COPILOT_COMMAND` or `copilot`
+1. `mock`: deterministic test harness
+2. `pi`: launches `PI_COMMAND` or `pi`
+3. `copilot`: launches `COPILOT_COMMAND` or `copilot`
 
-Both real CLI harnesses also support command templates:
-
-```bash
-COPILOT_COMMAND_TEMPLATE='copilot {prompt}' pnpm run piper -- examples/simple-task.piper.ts --workspace .
-```
-
-Templates can use `{goal}`, `{model}`, `{context}`, `{workspacePath}`, `{prompt}`, `{retryReason}`, and `{attempt}`. Values are shell-escaped before substitution.
-
-Copilot CLI runs receive `COPILOT_GOAL`, `COPILOT_MODEL`, `COPILOT_CONTEXT`, `COPILOT_PROMPT`, and `COPILOT_RETRY_REASON`, plus the generic `AGENT_*` variables used by all command harnesses.
-
-## Example
-
-Example workflows live in `examples/`.
-
-To run one:
+Real CLI harnesses also support command templates:
 
 ```bash
-pnpm run piper -- examples/simple-task.piper.ts --workspace .
+COPILOT_COMMAND_TEMPLATE='copilot {prompt}' pnpm exec piper workflows/simple-task.piper.ts --workspace .
 ```
 
-Artifact dependencies are explicit:
+Templates can use `{goal}`, `{model}`, `{context}`, `{workspacePath}`, `{prompt}`, `{retryReason}`, `{attempt}`, `{constraints}`, and `{protectedFiles}`. Values are shell-escaped before substitution.
+
+### Compose agent workflows
+
+Piper gives you workflow primitives for:
+
+1. ordered work with `workflow(...)`
+2. concurrent work with `parallel(...)`
+3. task outputs with `artifact(...)` and `runtimeValue(...)`
+4. retries and recovery with `recover(...)`
+5. protected scopes and post-task checks with `protect(...)`
+
+Piper does not contain the actual coding agent logic. That lives in the configured command invoked by a harness.
+
+### Use the SDK directly
 
 ```ts
-import { artifact, workflow, task } from "piper";
-
-const plan = artifact("plan");
-
-export default workflow(
-  task({ goal: "Create plan", harness: "mock", artifact: plan }),
-  task({ goal: "Implement feature", harness: "mock", context: [plan.value()] })
-);
-```
-
-`artifact("plan")` creates a typed artifact reference. Passing it as `artifact` publishes that task result; passing `plan.value()` in `context` waits for and reads that result. Piper validates missing and duplicate artifacts before a run starts.
-
-`artifact` currently returns a small reference object:
-
-```ts
-const plan = artifact("plan");
-
-plan.name;     // "plan"
-plan.value();  // runtime value for the text output
-plan.result(); // runtime value for the full TaskResult
-```
-
-Use `plan.value()` when a downstream task needs the artifact text. Use `plan.result()` when a `runtimeValue` needs the full `TaskResult`, including modified files and metadata.
-
-## Piper SDK
-
-You can run workflows without the CLI by using the SDK surface directly:
-
-```ts
-import { MockHarness, PiperOrchestrator, artifact, task, workflow } from "piper";
+import { MockHarness, PiperOrchestrator, artifact, task, workflow } from "@beyland/piper";
 
 const plan = artifact("plan");
 
@@ -124,124 +104,10 @@ const summary = await orchestrator.execute(
 console.log(summary.artifactPath);
 ```
 
-SDK hooks let you observe execution:
+SDK hooks let you observe execution, customize reporting, and integrate Piper into a larger toolchain.
 
-```ts
-const orchestrator = new PiperOrchestrator({
-  workspacePath: process.cwd(),
-  harnesses: [new MockHarness()],
-  hooks: {
-    info: console.log,
-    taskStarted: (info) => console.log("started", info.goal),
-    taskProgress: (_info, update) => console.log(update.message),
-    taskRetry: (_info, failures) => console.log("retry", failures),
-    taskCompleted: (_info, result) => console.log(result.output),
-    taskFailed: (_info, error) => console.error(error.message),
-    summary: (summary) => console.log(summary)
-  }
-});
-```
+### Add guardrails
 
-Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. To customize or disable:
+Piper keeps post-run protected-file checks, and it also passes constraints to command harnesses so Pi/Copilot hooks can proactively block restricted tool calls before they happen.
 
-```ts
-new PiperOrchestrator({
-  workspacePath: process.cwd(),
-  harnesses: [new MockHarness()],
-  artifactStorage: { rootDir: "/tmp/piper-runs", runId: "local-dev" }
-});
-
-new PiperOrchestrator({
-  workspacePath: process.cwd(),
-  harnesses: [new MockHarness()],
-  artifactStorage: false
-});
-```
-
-You can also point CLI runs at a different artifact root:
-
-```bash
-PIPER_ARTIFACT_ROOT=/tmp/piper-runs piper examples/simple-task.piper.ts
-```
-
-## Constraints and harness enforcement
-
-Piper always keeps its post-run protected-file checks, but it also passes constraints to command harnesses so Pi/Copilot hooks can enforce them before tool calls run.
-
-Command harnesses receive:
-
-1. `AGENT_CONSTRAINTS`
-2. `AGENT_PROTECTED_FILES`
-3. `<HARNESS>_CONSTRAINTS`, for example `PI_CONSTRAINTS`
-4. `<HARNESS>_PROTECTED_FILES`, for example `COPILOT_PROTECTED_FILES`
-
-The same values are available in command templates as `{constraints}` and `{protectedFiles}`.
-
-For now, Piper's recommended proactive enforcement is intentionally scoped to structured file tools: read, edit, and write/create. Bash/terminal access remains covered only by Piper's post-run protected-file checks.
-
-A denial message should tell the harness what happened and discourage workarounds:
-
-```txt
-This file is restricted by the active Piper workflow. Do not try to access it through another tool or alternate path. Continue the task using the remaining available context.
-```
-
-Pi can enforce this with a `tool_call` extension:
-
-```ts
-export default function (pi) {
-  const protectedFiles = new Set(
-    (process.env.AGENT_PROTECTED_FILES ?? "").split("\n").filter(Boolean)
-  );
-
-  pi.on("tool_call", async (event) => {
-    if (!["read", "edit", "write"].includes(event.toolName)) return undefined;
-
-    const path = event.input.path;
-    if (typeof path === "string" && protectedFiles.has(path)) {
-      return {
-        block: true,
-        reason:
-          "This file is restricted by the active Piper workflow. Do not try to access it through another tool or alternate path. Continue the task using the remaining available context."
-      };
-    }
-
-    return undefined;
-  });
-}
-```
-
-Copilot CLI can enforce the same policy with a `preToolUse` hook:
-
-```js
-const input = JSON.parse(await new Promise((resolve) => {
-  let data = "";
-  process.stdin.on("data", (chunk) => (data += chunk));
-  process.stdin.on("end", () => resolve(data));
-}));
-
-const protectedFiles = new Set((process.env.AGENT_PROTECTED_FILES ?? "").split("\n").filter(Boolean));
-const path = input.toolArgs?.path ?? input.toolArgs?.filePath ?? input.toolArgs?.file_path;
-
-if (["view", "edit", "create", "write"].includes(input.toolName) && protectedFiles.has(path)) {
-  console.log(JSON.stringify({
-    permissionDecision: "deny",
-    permissionDecisionReason:
-      "This file is restricted by the active Piper workflow. Do not try to access it through another tool or alternate path. Continue the task using the remaining available context."
-  }));
-} else {
-  console.log(JSON.stringify({ permissionDecision: "allow" }));
-}
-```
-
-## Mental model
-
-Think about the system like this:
-
-1. TypeScript builders describe the workflow
-2. The CLI compiles and loads it
-3. The orchestrator runs the workflow tree
-4. Harnesses launch your agent commands
-
-Use `workflow(...)` for ordered work, `parallel(...)` for concurrent work, `protect(...)` for protected-file scopes, and `recover(...)` for `onFailure` retry behavior. `parallel(...)` prints a generic status by default; pass `{ status: "..." }` to customize it.
-
-If you want more detail, read [ARCHITECTURE.md](ARCHITECTURE.md).
+For architecture details, project layout, and harness enforcement notes, read [ARCHITECTURE.md](ARCHITECTURE.md).

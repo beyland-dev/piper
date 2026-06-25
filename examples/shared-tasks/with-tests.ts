@@ -1,4 +1,4 @@
-import { workflow, task, type TaskNode } from "piper";
+import { workflow, task, type TaskNode } from "@beyland/piper";
 
 interface WithTestsProps {
   testCommand?: string;

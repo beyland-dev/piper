@@ -1,4 +1,4 @@
-import { artifact, parallel, protect, recover, task } from "piper";
+import { artifact, parallel, protect, recover, task } from "@beyland/piper";
 
 export default function oAuthWorkflow() {
   return recover(

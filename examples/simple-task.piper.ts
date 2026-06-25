@@ -1,4 +1,4 @@
-import { task } from "piper";
+import { task } from "@beyland/piper";
 
 export default function simpleTaskWorkflow() {
   return task({

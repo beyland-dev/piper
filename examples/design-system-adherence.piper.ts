@@ -1,4 +1,4 @@
-import { artifact, workflow, task } from "piper";
+import { artifact, workflow, task } from "@beyland/piper";
 
 import { withDesignSystemAudit } from "./shared-tasks/with-design-system-audit.js";
 import { withTests } from "./shared-tasks/with-tests.js";

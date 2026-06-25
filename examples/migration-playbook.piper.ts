@@ -1,4 +1,4 @@
-import { runtimeValue, artifact, parallel, protect, workflow, task } from "piper";
+import { runtimeValue, artifact, parallel, protect, workflow, task } from "@beyland/piper";
 
 export default function migrationPlaybookWorkflow() {
   return workflow(

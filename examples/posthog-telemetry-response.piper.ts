@@ -1,24 +1,42 @@
-import { PostHog } from "posthog-node";
+import { runtimeValue, artifact, parallel, workflow, task } from "@beyland/piper";
 
-import { runtimeValue, artifact, parallel, workflow, task } from "piper";
+const mockPostHogApi = {
+  async getAllFlags(_distinctId: string, { flagKeys }: { flagKeys: string[] }) {
+    const flagState: Record<string, boolean | string> = {
+      "checkout-redesign": true,
+      "billing-v2": "internal-beta"
+    };
+
+    return Object.fromEntries(flagKeys.map((flagKey) => [flagKey, flagState[flagKey] ?? false]));
+  },
+  async getFeatureFlagPayload(flagKey: string, _distinctId: string, flagValue: boolean | string) {
+    const payloads: Record<string, unknown> = {
+      "checkout-redesign": {
+        cohort: "enterprise",
+        rollout: "35%",
+        riskSignal: "elevated payment retries"
+      },
+      "billing-v2": {
+        cohort: "internal",
+        rollout: "10%",
+        riskSignal: "invoice preview latency"
+      }
+    };
+
+    return payloads[flagKey] ?? { rollout: "0%", flagValue };
+  },
+  async flush() {}
+};
 
 async function loadPostHogContext() {
-  const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
   const distinctId = process.env.POSTHOG_CONTEXT_DISTINCT_ID ?? "production-agent-context";
-  const host = process.env.POSTHOG_HOST ?? "https://app.posthog.com";
+  const host = "mock://posthog.local";
   const flagKeys = (process.env.POSTHOG_CONTEXT_FLAGS ?? "checkout-redesign,billing-v2")
     .split(",")
     .map((flag) => flag.trim())
     .filter(Boolean);
 
-  if (!apiKey) {
-    return [
-      "PostHog context was not loaded because POSTHOG_PROJECT_API_KEY is unset.",
-      "Set POSTHOG_CONTEXT_DISTINCT_ID and POSTHOG_CONTEXT_FLAGS to evaluate the same production flags the agent should reason about."
-    ].join("\n");
-  }
-
-  const posthog = new PostHog(apiKey, { host, evaluationContexts: ["production"] });
+  const posthog = mockPostHogApi;
 
   try {
     const flags = await posthog.getAllFlags(distinctId, { flagKeys });

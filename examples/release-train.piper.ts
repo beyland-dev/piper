@@ -1,4 +1,4 @@
-import { runtimeValue, artifact, parallel, protect, recover, task } from "piper";
+import { runtimeValue, artifact, parallel, protect, recover, task } from "@beyland/piper";
 
 export default function releaseTrainWorkflow() {
   return recover(

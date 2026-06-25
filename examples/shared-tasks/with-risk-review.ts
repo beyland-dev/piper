@@ -1,4 +1,4 @@
-import { runtimeValue, protect, workflow, task, type TaskNode } from "piper";
+import { runtimeValue, protect, workflow, task, type TaskNode } from "@beyland/piper";
 
 interface WithRiskReviewProps {
   protectedFiles: string[];

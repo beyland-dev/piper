@@ -12,7 +12,7 @@
     "lib": ["ES2022"],
     "types": ["node"],
     "paths": {
-      "piper": ["./src/index.ts"]
+      "@beyland/piper": ["./src/index.ts"]
     },
     "noEmit": true
   },

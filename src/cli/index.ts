@@ -68,8 +68,8 @@ Examples:
   piper examples/simple-task.piper.ts --print-compiled
       Inspect the bundled workflow module without executing it.
 
-  pnpm run piper -- examples/simple-task.piper.ts --workspace .
-      Forward arguments through a package manager script.`;
+  pnpm exec piper examples/simple-task.piper.ts --workspace .
+      Run an installed Piper CLI through a package manager.`;
 
 async function resolveRuntimeEntry(relativeBase: string): Promise<string> {
   const sourceCandidate = new URL(`../${relativeBase}.ts`, import.meta.url);
@@ -160,7 +160,7 @@ async function compileWorkflow(workflowPath: string): Promise<string> {
       {
         name: "piper-self-alias",
         setup(pluginBuild) {
-          pluginBuild.onResolve({ filter: /^(agent-runtime|piper)$/ }, () => ({
+          pluginBuild.onResolve({ filter: /^@beyland\/piper$/ }, () => ({
             path: runtimeEntry
           }));
         }
