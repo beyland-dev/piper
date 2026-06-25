@@ -1,117 +1,122 @@
 import { stat } from "node:fs/promises";
 import { dirname, join, parse } from "node:path";
-
 import { runCommand } from "../utils/process.js";
 import { shellEscape } from "../utils/shell.js";
 
 export interface GitSnapshot {
-  available: boolean;
-  modifiedFiles: Set<string>;
+	available: boolean;
+	modifiedFiles: Set<string>;
 }
 
 async function isGitRepository(workspacePath: string): Promise<boolean> {
-  if (!(await hasGitMetadata(workspacePath))) {
-    return false;
-  }
+	if (!(await hasGitMetadata(workspacePath))) {
+		return false;
+	}
 
-  const result = await runCommand("git rev-parse --is-inside-work-tree", {
-    cwd: workspacePath
-  });
+	const result = await runCommand("git rev-parse --is-inside-work-tree", {
+		cwd: workspacePath,
+	});
 
-  return result.exitCode === 0;
+	return result.exitCode === 0;
 }
 
 function isMissingGitMetadataError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		(error.code === "ENOENT" || error.code === "ENOTDIR")
+	);
 }
 
 async function hasGitMetadata(workspacePath: string): Promise<boolean> {
-  let current = workspacePath;
-  const root = parse(workspacePath).root;
+	let current = workspacePath;
+	const root = parse(workspacePath).root;
 
-  while (true) {
-    try {
-      const metadata = await stat(join(current, ".git"));
-      if (metadata.isDirectory() || metadata.isFile()) {
-        return true;
-      }
-    } catch (error) {
-      if (!isMissingGitMetadataError(error)) {
-        throw error;
-      }
-    }
+	while (true) {
+		try {
+			const metadata = await stat(join(current, ".git"));
+			if (metadata.isDirectory() || metadata.isFile()) {
+				return true;
+			}
+		} catch (error) {
+			if (!isMissingGitMetadataError(error)) {
+				throw error;
+			}
+		}
 
-    if (current === root) {
-      return false;
-    }
+		if (current === root) {
+			return false;
+		}
 
-    current = dirname(current);
-  }
+		current = dirname(current);
+	}
 }
 
 export async function listModifiedFiles(workspacePath: string): Promise<string[]> {
-  if (!(await isGitRepository(workspacePath))) {
-    return [];
-  }
+	if (!(await isGitRepository(workspacePath))) {
+		return [];
+	}
 
-  const unstaged = await runCommand("git diff --name-only", {
-    cwd: workspacePath
-  });
-  const staged = await runCommand("git diff --cached --name-only", {
-    cwd: workspacePath
-  });
+	const unstaged = await runCommand("git diff --name-only", {
+		cwd: workspacePath,
+	});
+	const staged = await runCommand("git diff --cached --name-only", {
+		cwd: workspacePath,
+	});
 
-  return [...new Set([...unstaged.stdout.split("\n"), ...staged.stdout.split("\n")].map((value) => value.trim()).filter(Boolean))];
+	return [
+		...new Set(
+			[...unstaged.stdout.split("\n"), ...staged.stdout.split("\n")]
+				.map((value) => value.trim())
+				.filter(Boolean),
+		),
+	];
 }
 
 export async function captureGitSnapshot(workspacePath: string): Promise<GitSnapshot> {
-  const available = await isGitRepository(workspacePath);
-  if (!available) {
-    return {
-      available: false,
-      modifiedFiles: new Set()
-    };
-  }
+	const available = await isGitRepository(workspacePath);
+	if (!available) {
+		return {
+			available: false,
+			modifiedFiles: new Set(),
+		};
+	}
 
-  return {
-    available,
-    modifiedFiles: new Set(await listModifiedFiles(workspacePath))
-  };
+	return {
+		available,
+		modifiedFiles: new Set(await listModifiedFiles(workspacePath)),
+	};
 }
 
 export async function enforceProtectedFiles(params: {
-  workspacePath: string;
-  snapshot: GitSnapshot;
-  protectedFiles: string[];
+	workspacePath: string;
+	snapshot: GitSnapshot;
+	protectedFiles: string[];
 }): Promise<string[]> {
-  const { workspacePath, snapshot, protectedFiles } = params;
+	const { workspacePath, snapshot, protectedFiles } = params;
 
-  if (protectedFiles.length === 0) {
-    return [];
-  }
+	if (protectedFiles.length === 0) {
+		return [];
+	}
 
-  if (!snapshot.available) {
-    return [
-      "Protected file constraints require a git repository so changes can be detected and reverted."
-    ];
-  }
+	if (!snapshot.available) {
+		return [
+			"Protected file constraints require a git repository so changes can be detected and reverted.",
+		];
+	}
 
-  const currentModifiedFiles = new Set(await listModifiedFiles(workspacePath));
-  const violations = protectedFiles.filter(
-    (filePath) => currentModifiedFiles.has(filePath) && !snapshot.modifiedFiles.has(filePath)
-  );
+	const currentModifiedFiles = new Set(await listModifiedFiles(workspacePath));
+	const violations = protectedFiles.filter(
+		(filePath) => currentModifiedFiles.has(filePath) && !snapshot.modifiedFiles.has(filePath),
+	);
 
-  if (violations.length > 0) {
-    const escapedFiles = violations.map((filePath) => shellEscape(filePath)).join(" ");
-    await runCommand(`git checkout -- ${escapedFiles}`, {
-      cwd: workspacePath
-    });
-  }
+	if (violations.length > 0) {
+		const escapedFiles = violations.map((filePath) => shellEscape(filePath)).join(" ");
+		await runCommand(`git checkout -- ${escapedFiles}`, {
+			cwd: workspacePath,
+		});
+	}
 
-  return violations.map((filePath) => `Constraint violated: do not modify ${filePath}`);
+	return violations.map((filePath) => `Constraint violated: do not modify ${filePath}`);
 }

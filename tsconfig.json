@@ -1,21 +1,21 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "lib": ["ES2022"],
-    "types": ["node"],
-    "paths": {
-      "@beyland/piper": ["./src/index.ts"]
-    },
-    "noEmit": true
-  },
-  "include": ["src/**/*.ts", "examples/**/*.ts", "tests/**/*.ts", "automations/**/*.ts"],
-  "exclude": ["dist"]
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"strict": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"lib": ["ES2022"],
+		"types": ["node"],
+		"paths": {
+			"@beyland/piper": ["./src/index.ts"]
+		},
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "examples/**/*.ts", "tests/**/*.ts", "automations/**/*.ts"],
+	"exclude": ["dist"]
 }

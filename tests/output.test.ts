@@ -1,86 +1,88 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { afterEach, describe, expect, it } from "vitest";
-
 import { MockHarness, PiperOrchestrator, artifact, task } from "../src/index.js";
 
 describe("artifact", () => {
-  const directories: string[] = [];
+	const directories: string[] = [];
 
-  afterEach(async () => {
-    await Promise.all(directories.map((directory) => rm(directory, { recursive: true, force: true })));
-  });
+	afterEach(async () => {
+		await Promise.all(
+			directories.map((directory) => rm(directory, { recursive: true, force: true })),
+		);
+	});
 
-  it("passes named artifact into downstream task context", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-"));
-    directories.push(workspacePath);
+	it("passes named artifact into downstream task context", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-"));
+		directories.push(workspacePath);
 
-    const adapter = new MockHarness({
-      behaviors: {
-        "Create plan": {
-          output: "OAuth plan"
-        },
-        "Implement feature": {
-          output: "Done"
-        }
-      }
-    });
+		const adapter = new MockHarness({
+			behaviors: {
+				"Create plan": {
+					output: "OAuth plan",
+				},
+				"Implement feature": {
+					output: "Done",
+				},
+			},
+		});
 
-    const executor = new PiperOrchestrator({
-      workspacePath,
-      harnesses: [adapter],
-      taskRetryLimit: 0,
-      artifactStorage: false
-    });
-    const plan = artifact("plan");
+		const executor = new PiperOrchestrator({
+			workspacePath,
+			harnesses: [adapter],
+			taskRetryLimit: 0,
+			artifactStorage: false,
+		});
+		const plan = artifact("plan");
 
-    await executor.execute([
-      task({ goal: "Create plan", harness: "mock", artifact: plan }),
-      task({ goal: "Implement feature", harness: "mock", context: [plan.value()] })
-    ]);
+		await executor.execute([
+			task({ goal: "Create plan", harness: "mock", artifact: plan }),
+			task({ goal: "Implement feature", harness: "mock", context: [plan.value()] }),
+		]);
 
-    const downstreamAttempt = adapter.history.find((entry) => entry.goal === "Implement feature");
-    expect(downstreamAttempt?.context).toEqual(["OAuth plan"]);
-  });
+		const downstreamAttempt = adapter.history.find((entry) => entry.goal === "Implement feature");
+		expect(downstreamAttempt?.context).toEqual(["OAuth plan"]);
+	});
 
-  it("persists artifacts to disk by default", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-"));
-    const outputRoot = await mkdtemp(join(tmpdir(), "piper-artifact-runs-"));
-    directories.push(workspacePath, outputRoot);
+	it("persists artifacts to disk by default", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-"));
+		const outputRoot = await mkdtemp(join(tmpdir(), "piper-artifact-runs-"));
+		directories.push(workspacePath, outputRoot);
 
-    const executor = new PiperOrchestrator({
-      workspacePath,
-      harnesses: [
-        new MockHarness({
-          behaviors: {
-            "Create plan": {
-              output: "Persisted plan"
-            }
-          }
-        })
-      ],
-      taskRetryLimit: 0,
-      artifactStorage: {
-        rootDir: outputRoot,
-        runId: "test-run"
-      }
-    });
+		const executor = new PiperOrchestrator({
+			workspacePath,
+			harnesses: [
+				new MockHarness({
+					behaviors: {
+						"Create plan": {
+							output: "Persisted plan",
+						},
+					},
+				}),
+			],
+			taskRetryLimit: 0,
+			artifactStorage: {
+				rootDir: outputRoot,
+				runId: "test-run",
+			},
+		});
 
-    const summary = await executor.execute(task({ goal: "Create plan", harness: "mock", artifact: "plan" }));
+		const summary = await executor.execute(
+			task({ goal: "Create plan", harness: "mock", artifact: "plan" }),
+		);
 
-    expect(summary.runId).toBe("test-run");
-    expect(summary.artifactPath).toBe(join(outputRoot, "test-run", "artifacts.json"));
+		expect(summary.runId).toBe("test-run");
+		expect(summary.artifactPath).toBe(join(outputRoot, "test-run", "artifacts.json"));
 
-    const persisted = JSON.parse(await readFile(summary.artifactPath as string, "utf8")) as {
-      runId: string;
-      artifacts: Record<string, { output: string }>;
-      summary: { completedTasks: number };
-    };
+		const persisted = JSON.parse(await readFile(summary.artifactPath as string, "utf8")) as {
+			runId: string;
+			artifacts: Record<string, { output: string }>;
+			summary: { completedTasks: number };
+		};
 
-    expect(persisted.runId).toBe("test-run");
-    expect(persisted.artifacts.plan.output).toBe("Persisted plan");
-    expect(persisted.summary.completedTasks).toBe(1);
-  });
+		expect(persisted.runId).toBe("test-run");
+		expect(persisted.artifacts.plan.output).toBe("Persisted plan");
+		expect(persisted.summary.completedTasks).toBe(1);
+	});
 });

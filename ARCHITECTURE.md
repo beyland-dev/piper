@@ -29,7 +29,7 @@ The builder API is the authoring surface for Piper workflows. It is a typed way 
 When you write this:
 
 ```ts
-task({ goal: "Inspect the repo", harness: "pi" })
+task({ goal: "Inspect the repo", harness: "pi" });
 ```
 
 you are really creating a plain object that says, in effect:

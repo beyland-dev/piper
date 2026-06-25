@@ -31,8 +31,8 @@ import { artifact, task, workflow } from "@beyland/piper";
 const plan = artifact("plan");
 
 export default workflow(
-  task({ goal: "Create plan", harness: "copilot", artifact: plan }),
-  task({ goal: "Implement feature", harness: "copilot", context: [plan.value()] })
+	task({ goal: "Create plan", harness: "copilot", artifact: plan }),
+	task({ goal: "Implement feature", harness: "copilot", context: [plan.value()] }),
 );
 ```
 
@@ -90,15 +90,15 @@ import { MockHarness, PiperOrchestrator, artifact, task, workflow } from "@beyla
 const plan = artifact("plan");
 
 const orchestrator = new PiperOrchestrator({
-  workspacePath: process.cwd(),
-  harnesses: [new MockHarness()]
+	workspacePath: process.cwd(),
+	harnesses: [new MockHarness()],
 });
 
 const summary = await orchestrator.execute(
-  workflow(
-    task({ goal: "Create plan", harness: "mock", artifact: plan }),
-    task({ goal: "Implement plan", harness: "mock", context: [plan.value()] })
-  )
+	workflow(
+		task({ goal: "Create plan", harness: "mock", artifact: plan }),
+		task({ goal: "Implement plan", harness: "mock", context: [plan.value()] }),
+	),
 );
 
 console.log(summary.artifactPath);

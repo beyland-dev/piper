@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 
-import { access } from "node:fs/promises";
 import { constants as fsConstants, realpathSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { build } from "esbuild";
-
-import { MockHarness } from "../adapters/mock-adapter.js";
 import { CopilotCliHarness } from "../adapters/copilot-cli-adapter.js";
+import { MockHarness } from "../adapters/mock-adapter.js";
 import { PiHarness } from "../adapters/pi-adapter.js";
 import { normalizeTree } from "../core/node-utils.js";
 import type { TaskNode } from "../core/types.js";
@@ -16,25 +14,25 @@ import { PiperOrchestrator } from "../runtime/executor.js";
 import { CliReporter, formatTaskTree } from "./output.js";
 
 interface RunOptions {
-  workflowPath: string;
-  workspacePath: string;
-  verbose: boolean;
-  dryRun: boolean;
-  printCompiled: boolean;
+	workflowPath: string;
+	workspacePath: string;
+	verbose: boolean;
+	dryRun: boolean;
+	printCompiled: boolean;
 }
 
 type CliOptions =
-  | {
-      kind: "help";
-    }
-  | ({
-      kind: "run";
-    } & RunOptions);
+	| {
+			kind: "help";
+	  }
+	| ({
+			kind: "run";
+	  } & RunOptions);
 
 interface RunCliOptions {
-  stdout?: NodeJS.WritableStream;
-  stderr?: NodeJS.WritableStream;
-  cwd?: string;
+	stdout?: NodeJS.WritableStream;
+	stderr?: NodeJS.WritableStream;
+	cwd?: string;
 }
 
 const HELP_TEXT = `Usage: piper <workflow.piper.ts> [options]
@@ -72,197 +70,197 @@ Examples:
       Run an installed Piper CLI through a package manager.`;
 
 async function resolveRuntimeEntry(relativeBase: string): Promise<string> {
-  const sourceCandidate = new URL(`../${relativeBase}.ts`, import.meta.url);
-  try {
-    await access(sourceCandidate, fsConstants.F_OK);
-    return fileURLToPath(sourceCandidate);
-  } catch {
-    return fileURLToPath(new URL(`../${relativeBase}.js`, import.meta.url));
-  }
+	const sourceCandidate = new URL(`../${relativeBase}.ts`, import.meta.url);
+	try {
+		await access(sourceCandidate, fsConstants.F_OK);
+		return fileURLToPath(sourceCandidate);
+	} catch {
+		return fileURLToPath(new URL(`../${relativeBase}.js`, import.meta.url));
+	}
 }
 
 function parseArguments(argv: string[], cwd: string): CliOptions {
-  const values = [...argv];
+	const values = [...argv];
 
-  // Package managers may forward a literal `--` separator to the script.
-  while (values[0] === "--") {
-    values.shift();
-  }
+	// Package managers may forward a literal `--` separator to the script.
+	while (values[0] === "--") {
+		values.shift();
+	}
 
-  const workflowArg = values.shift();
-  if (!workflowArg || workflowArg === "-h" || workflowArg === "--help") {
-    return { kind: "help" };
-  }
+	const workflowArg = values.shift();
+	if (!workflowArg || workflowArg === "-h" || workflowArg === "--help") {
+		return { kind: "help" };
+	}
 
-  let workspacePath = cwd;
-  let verbose = true;
-  let dryRun = false;
-  let printCompiled = false;
+	let workspacePath = cwd;
+	let verbose = true;
+	let dryRun = false;
+	let printCompiled = false;
 
-  while (values.length > 0) {
-    const current = values.shift();
-    if (current === "--workspace") {
-      const workspaceArg = values.shift();
-      if (!workspaceArg) {
-        throw new Error("Missing value for --workspace");
-      }
-      workspacePath = resolve(cwd, workspaceArg);
-      continue;
-    }
+	while (values.length > 0) {
+		const current = values.shift();
+		if (current === "--workspace") {
+			const workspaceArg = values.shift();
+			if (!workspaceArg) {
+				throw new Error("Missing value for --workspace");
+			}
+			workspacePath = resolve(cwd, workspaceArg);
+			continue;
+		}
 
-    if (current === "--verbose") {
-      verbose = true;
-      continue;
-    }
+		if (current === "--verbose") {
+			verbose = true;
+			continue;
+		}
 
-    if (current === "--quiet") {
-      verbose = false;
-      continue;
-    }
+		if (current === "--quiet") {
+			verbose = false;
+			continue;
+		}
 
-    if (current === "--dry-run") {
-      dryRun = true;
-      continue;
-    }
+		if (current === "--dry-run") {
+			dryRun = true;
+			continue;
+		}
 
-    if (current === "--print-compiled") {
-      printCompiled = true;
-      continue;
-    }
+		if (current === "--print-compiled") {
+			printCompiled = true;
+			continue;
+		}
 
-    if (current === "-h" || current === "--help") {
-      return { kind: "help" };
-    }
+		if (current === "-h" || current === "--help") {
+			return { kind: "help" };
+		}
 
-    throw new Error(`Unknown argument: ${current}`);
-  }
+		throw new Error(`Unknown argument: ${current}`);
+	}
 
-  return {
-    kind: "run",
-    workflowPath: resolve(cwd, workflowArg),
-    workspacePath,
-    verbose,
-    dryRun,
-    printCompiled
-  };
+	return {
+		kind: "run",
+		workflowPath: resolve(cwd, workflowArg),
+		workspacePath,
+		verbose,
+		dryRun,
+		printCompiled,
+	};
 }
 
 async function compileWorkflow(workflowPath: string): Promise<string> {
-  const runtimeEntry = await resolveRuntimeEntry("index");
+	const runtimeEntry = await resolveRuntimeEntry("index");
 
-  const buildResult = await build({
-    entryPoints: [workflowPath],
-    bundle: true,
-    format: "esm",
-    platform: "node",
-    write: false,
-    plugins: [
-      {
-        name: "piper-self-alias",
-        setup(pluginBuild) {
-          pluginBuild.onResolve({ filter: /^@beyland\/piper$/ }, () => ({
-            path: runtimeEntry
-          }));
-        }
-      }
-    ]
-  });
+	const buildResult = await build({
+		entryPoints: [workflowPath],
+		bundle: true,
+		format: "esm",
+		platform: "node",
+		write: false,
+		plugins: [
+			{
+				name: "piper-self-alias",
+				setup(pluginBuild) {
+					pluginBuild.onResolve({ filter: /^@beyland\/piper$/ }, () => ({
+						path: runtimeEntry,
+					}));
+				},
+			},
+		],
+	});
 
-  const contents = buildResult.outputFiles[0]?.text;
-  if (!contents) {
-    throw new Error(`Failed to compile workflow: ${workflowPath}`);
-  }
+	const contents = buildResult.outputFiles[0]?.text;
+	if (!contents) {
+		throw new Error(`Failed to compile workflow: ${workflowPath}`);
+	}
 
-  return contents;
+	return contents;
 }
 
 async function loadWorkflow(workflowPath: string): Promise<TaskNode> {
-  const contents = await compileWorkflow(workflowPath);
+	const contents = await compileWorkflow(workflowPath);
 
-  const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(contents)}`;
-  const module = await import(moduleUrl);
-  const exported = module.default;
+	const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(contents)}`;
+	const module = await import(moduleUrl);
+	const exported = module.default;
 
-  if (!exported) {
-    throw new Error("Workflow module must export a default task tree or default function.");
-  }
+	if (!exported) {
+		throw new Error("Workflow module must export a default task tree or default function.");
+	}
 
-  const tree = typeof exported === "function" ? exported() : exported;
-  return normalizeTree(tree);
+	const tree = typeof exported === "function" ? exported() : exported;
+	return normalizeTree(tree);
 }
 
 export async function runCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
-  const cwd = options.cwd ?? process.cwd();
+	const cwd = options.cwd ?? process.cwd();
 
-  try {
-    const parsed = parseArguments(argv, cwd);
+	try {
+		const parsed = parseArguments(argv, cwd);
 
-    if (parsed.kind === "help") {
-      (options.stdout ?? process.stdout).write(`${HELP_TEXT}\n`);
-      return 0;
-    }
+		if (parsed.kind === "help") {
+			(options.stdout ?? process.stdout).write(`${HELP_TEXT}\n`);
+			return 0;
+		}
 
-    const hooks = new CliReporter({
-      verbose: parsed.verbose,
-      stdout: options.stdout,
-      stderr: options.stderr
-    });
+		const hooks = new CliReporter({
+			verbose: parsed.verbose,
+			stdout: options.stdout,
+			stderr: options.stderr,
+		});
 
-    if (parsed.printCompiled) {
-      (options.stdout ?? process.stdout).write(`${await compileWorkflow(parsed.workflowPath)}\n`);
-      return 0;
-    }
+		if (parsed.printCompiled) {
+			(options.stdout ?? process.stdout).write(`${await compileWorkflow(parsed.workflowPath)}\n`);
+			return 0;
+		}
 
-    const taskTree = await loadWorkflow(parsed.workflowPath);
+		const taskTree = await loadWorkflow(parsed.workflowPath);
 
-    if (parsed.dryRun) {
-      hooks.info("Dry run");
-      hooks.info(formatTaskTree(taskTree));
-      return 0;
-    }
+		if (parsed.dryRun) {
+			hooks.info("Dry run");
+			hooks.info(formatTaskTree(taskTree));
+			return 0;
+		}
 
-    const orchestrator = new PiperOrchestrator({
-      workspacePath: parsed.workspacePath,
-      taskRetryLimit: 3,
-      hooks,
-      artifactStorage: process.env.PIPER_ARTIFACT_ROOT
-        ? { rootDir: process.env.PIPER_ARTIFACT_ROOT }
-        : undefined,
-      harnesses: [
-        new PiHarness({
-          command: process.env.PI_COMMAND ?? "pi",
-          commandTemplate: process.env.PI_COMMAND_TEMPLATE
-        }),
-        new CopilotCliHarness({
-          command: process.env.COPILOT_COMMAND ?? "copilot",
-          commandTemplate: process.env.COPILOT_COMMAND_TEMPLATE
-        }),
-        new MockHarness()
-      ]
-    });
+		const orchestrator = new PiperOrchestrator({
+			workspacePath: parsed.workspacePath,
+			taskRetryLimit: 3,
+			hooks,
+			artifactStorage: process.env.PIPER_ARTIFACT_ROOT
+				? { rootDir: process.env.PIPER_ARTIFACT_ROOT }
+				: undefined,
+			harnesses: [
+				new PiHarness({
+					command: process.env.PI_COMMAND ?? "pi",
+					commandTemplate: process.env.PI_COMMAND_TEMPLATE,
+				}),
+				new CopilotCliHarness({
+					command: process.env.COPILOT_COMMAND ?? "copilot",
+					commandTemplate: process.env.COPILOT_COMMAND_TEMPLATE,
+				}),
+				new MockHarness(),
+			],
+		});
 
-    await orchestrator.execute(taskTree);
-    return 0;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    (options.stderr ?? process.stderr).write(`${message}\n`);
-    return 1;
-  }
+		await orchestrator.execute(taskTree);
+		return 0;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		(options.stderr ?? process.stderr).write(`${message}\n`);
+		return 1;
+	}
 }
 
 async function main(): Promise<void> {
-  const exitCode = await runCli(process.argv.slice(2));
-  process.exitCode = exitCode;
+	const exitCode = await runCli(process.argv.slice(2));
+	process.exitCode = exitCode;
 }
 
 function isCliEntrypoint(): boolean {
-  if (!process.argv[1]) {
-    return false;
-  }
+	if (!process.argv[1]) {
+		return false;
+	}
 
-  return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+	return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
 }
 
 if (isCliEntrypoint()) {
-  void main();
+	void main();
 }

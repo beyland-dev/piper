@@ -1,48 +1,48 @@
 {
-  "name": "@beyland/piper",
-  "version": "0.1.0",
-  "description": "A meta-framework for declaratively orchestrating coding agents",
-  "author": "Hawk Ticehurst",
-  "license": "MIT",
-  "type": "module",
-  "bin": {
-    "piper": "./dist/cli/index.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "fmt": "oxfmt --write --config .oxfmt.json .",
-    "fmt:check": "oxfmt --check --config .oxfmt.json .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "piper": "npm run build --silent && node dist/cli/index.js"
-  },
-  "keywords": [
-    "agents",
-    "coding-agents",
-    "meta-framework",
-    "typescript",
-    "workflow",
-    "pi",
-    "copilot",
-    "claude",
-    "codex"
-  ],
-  "dependencies": {
-    "esbuild": "^0.25.5"
-  },
-  "devDependencies": {
-    "@types/node": "^22.15.30",
-    "oxfmt": "^0.56.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
-  }
+	"name": "@beyland/piper",
+	"version": "0.1.0",
+	"description": "A meta-framework for declaratively orchestrating coding agents",
+	"keywords": [
+		"agents",
+		"claude",
+		"codex",
+		"coding-agents",
+		"copilot",
+		"meta-framework",
+		"pi",
+		"typescript",
+		"workflow"
+	],
+	"license": "MIT",
+	"author": "Hawk Ticehurst",
+	"bin": {
+		"piper": "./dist/cli/index.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"fmt": "oxfmt --write --config .oxfmt.json .",
+		"fmt:check": "oxfmt --check --config .oxfmt.json .",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"piper": "npm run build --silent && node dist/cli/index.js"
+	},
+	"dependencies": {
+		"esbuild": "^0.25.5"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.30",
+		"oxfmt": "^0.56.0",
+		"typescript": "^5.8.3",
+		"vitest": "^3.2.4"
+	}
 }
