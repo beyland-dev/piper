@@ -12,6 +12,7 @@ export class CopilotCliHarness extends CommandHarness {
 			{
 				name,
 				defaultCommand: "copilot",
+				defaultArguments: ["-p"],
 				envPrefix: "COPILOT",
 			},
 			commandOptions,

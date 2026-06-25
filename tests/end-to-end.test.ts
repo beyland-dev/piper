@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,7 +78,12 @@ describe("CLI end-to-end", () => {
 
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
-		expect(stdout).toContain("[task-1] mock attempt 1 started");
+		expect(stdout).toContain("[run] Plan");
+		expect(stdout).toContain("      task=task-1  harness=mock  attempt=1");
+		expect(stdout).toContain("\n\n      mock attempt 1 started");
+		expect(stdout).toContain("mock attempt 1 completed\n\n[done] Successfully completed task-1");
+		expect(stdout).not.toContain("  | mock attempt 1 started");
+		expect(stdout).not.toContain("[task-1] mock attempt 1 started");
 		expect(stdout).toContain("[summary] completed=3 failed=0");
 	});
 
@@ -111,8 +117,9 @@ describe("CLI end-to-end", () => {
 
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
-		expect(stdout).toContain("[run] task-1");
-		expect(stdout).not.toContain("[task-1] mock attempt 1 started");
+		expect(stdout).toContain("[run] Plan");
+		expect(stdout).toContain("task=task-1");
+		expect(stdout).not.toContain("      mock attempt 1 started");
 		expect(stdout).toContain("[summary] completed=1 failed=0");
 	});
 
@@ -150,7 +157,7 @@ describe("CLI end-to-end", () => {
 
 			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
-			expect(stdout).toContain("[done] task-1 Plan with Copilot");
+			expect(stdout).toContain("[done] Successfully completed task-1");
 			expect(stdout).toContain("[summary] completed=1 failed=0");
 		} finally {
 			if (previousTemplate === undefined) {
@@ -250,5 +257,52 @@ describe("CLI end-to-end", () => {
 		expect(stderr).toBe("");
 		expect(stdout).toContain("function DemoWorkflow");
 		expect(stdout).toContain('goal: "Plan"');
+	});
+
+	it("cancels an in-flight run on SIGINT", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
+		directories.push(workspacePath);
+
+		const workflowPath = join(workspacePath, "demo.piper.ts");
+		await writeFile(
+			workflowPath,
+			`
+        import { task } from "@beyland/piper";
+
+        export default function DemoWorkflow() {
+          return task({ goal: "Long task", harness: "mock", artifact: "result" });
+        }
+      `,
+			"utf8",
+		);
+
+		let stdout = "";
+		let stderr = "";
+		let sendInterrupt: (() => void) | undefined;
+		const signalTarget = new EventEmitter();
+		const started = new Promise<void>((resolve) => {
+			sendInterrupt = resolve;
+		});
+
+		const run = runCli([workflowPath, "--workspace", workspacePath], {
+			stdout: createBufferStream((chunk) => {
+				stdout += chunk;
+				if (chunk.includes("[run] Long task")) {
+					sendInterrupt?.();
+				}
+			}),
+			stderr: createBufferStream((chunk) => {
+				stderr += chunk;
+			}),
+			signalTarget,
+		});
+
+		await started;
+		signalTarget.emit("SIGINT");
+
+		await expect(run).resolves.toBe(130);
+		expect(stdout).toContain("[run] Long task");
+		expect(stdout).toContain("task=task-1");
+		expect(stderr).toContain("[cancel] Received SIGINT; cancelling in-flight tasks...");
 	});
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,6 +30,31 @@ describe("CopilotCliHarness", () => {
 
 		await expect(handle.completed).resolves.toMatchObject({
 			output: `Create a plan\nUse tests\n${workspacePath}`,
+		});
+	});
+
+	it("passes the prompt with Copilot's non-interactive flag by default", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
+		directories.push(workspacePath);
+		const commandPath = join(workspacePath, "fake-copilot");
+		await writeFile(
+			commandPath,
+			"#!/usr/bin/env node\nconsole.log(JSON.stringify(process.argv.slice(2)))\n",
+		);
+		await chmod(commandPath, 0o755);
+
+		const adapter = new CopilotCliHarness({
+			command: commandPath,
+		});
+
+		const handle = adapter.startTask({
+			goal: "Create a plan",
+			context: ["Use tests"],
+			workspacePath,
+		});
+
+		await expect(handle.completed).resolves.toMatchObject({
+			output: JSON.stringify(["-p", "Goal:\nCreate a plan\n\nContext:\nUse tests"]),
 		});
 	});
 

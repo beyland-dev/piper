@@ -5,13 +5,24 @@ import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { CopilotAhpHarness } from "../adapters/copilot-ahp-adapter.js";
 import { CopilotCliHarness } from "../adapters/copilot-cli-adapter.js";
 import { MockHarness } from "../adapters/mock-adapter.js";
 import { PiHarness } from "../adapters/pi-adapter.js";
+import type { HarnessAdapter } from "../core/types.js";
 import { normalizeTree } from "../core/node-utils.js";
 import type { TaskNode } from "../core/types.js";
-import { PiperOrchestrator } from "../runtime/executor.js";
+import { isPiperCancellationError, PiperOrchestrator } from "../runtime/executor.js";
 import { CliReporter, formatTaskTree } from "./output.js";
+
+const CANCELLATION_SIGNALS = ["SIGINT", "SIGTERM"] as const;
+
+type CancellationSignal = (typeof CANCELLATION_SIGNALS)[number];
+
+interface SignalTarget {
+	on(event: CancellationSignal, listener: () => void): unknown;
+	off(event: CancellationSignal, listener: () => void): unknown;
+}
 
 interface RunOptions {
 	workflowPath: string;
@@ -33,6 +44,7 @@ interface RunCliOptions {
 	stdout?: NodeJS.WritableStream;
 	stderr?: NodeJS.WritableStream;
 	cwd?: string;
+	signalTarget?: SignalTarget;
 }
 
 const HELP_TEXT = `Usage: piper <workflow.piper.ts> [options]
@@ -189,6 +201,100 @@ async function loadWorkflow(workflowPath: string): Promise<TaskNode> {
 	return normalizeTree(tree);
 }
 
+function exitCodeForSignal(signal: NodeJS.Signals | undefined): number {
+	if (signal === "SIGINT") {
+		return 130;
+	}
+
+	if (signal === "SIGTERM") {
+		return 143;
+	}
+
+	return 1;
+}
+
+function readBooleanEnv(name: string): boolean | undefined {
+	const value = process.env[name];
+	if (value === undefined) {
+		return undefined;
+	}
+
+	if (value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes") {
+		return true;
+	}
+
+	if (value === "0" || value.toLowerCase() === "false" || value.toLowerCase() === "no") {
+		return false;
+	}
+
+	throw new Error(`${name} must be one of: 1, 0, true, false, yes, no`);
+}
+
+function createCopilotHarness(): HarnessAdapter {
+	const harness = process.env.PIPER_COPILOT_HARNESS ?? "cli";
+	switch (harness) {
+		case "cli":
+			return new CopilotCliHarness({
+				command: process.env.COPILOT_COMMAND ?? "copilot",
+				commandTemplate: process.env.COPILOT_COMMAND_TEMPLATE,
+			});
+		case "ahp":
+			return new CopilotAhpHarness({
+				address: process.env.COPILOT_AHP_ADDRESS,
+				codeCommand: process.env.COPILOT_AHP_CODE_COMMAND,
+				autoStartAgentHost: readBooleanEnv("COPILOT_AHP_AUTO_START"),
+			});
+		default:
+			throw new Error("PIPER_COPILOT_HARNESS must be either \"cli\" or \"ahp\"");
+	}
+}
+
+function installCancellationHandlers(params: {
+	orchestrator: PiperOrchestrator;
+	stderr: NodeJS.WritableStream;
+	signalTarget: SignalTarget;
+}): {
+	dispose: () => void;
+	settle: () => Promise<void>;
+} {
+	const handlers = new Map<CancellationSignal, () => void>();
+	let cancellationPromise: Promise<void> | null = null;
+	let cancellationError: unknown;
+
+	const requestCancellation = (signal: CancellationSignal) => {
+		if (cancellationPromise) {
+			return;
+		}
+
+		params.stderr.write(`[cancel] Received ${signal}; cancelling in-flight tasks...\n`);
+		cancellationPromise = params.orchestrator
+			.cancel(`Received ${signal}; cancelling Piper run.`, signal)
+			.catch((error: unknown) => {
+				cancellationError = error;
+			});
+	};
+
+	for (const signal of CANCELLATION_SIGNALS) {
+		const handler = () => requestCancellation(signal);
+		handlers.set(signal, handler);
+		params.signalTarget.on(signal, handler);
+	}
+
+	return {
+		dispose: () => {
+			for (const [signal, handler] of handlers) {
+				params.signalTarget.off(signal, handler);
+			}
+		},
+		settle: async () => {
+			await cancellationPromise;
+			if (cancellationError) {
+				throw cancellationError;
+			}
+		},
+	};
+}
+
 export async function runCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
 	const cwd = options.cwd ?? process.cwd();
 
@@ -231,17 +337,36 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 					command: process.env.PI_COMMAND ?? "pi",
 					commandTemplate: process.env.PI_COMMAND_TEMPLATE,
 				}),
-				new CopilotCliHarness({
-					command: process.env.COPILOT_COMMAND ?? "copilot",
-					commandTemplate: process.env.COPILOT_COMMAND_TEMPLATE,
-				}),
+				createCopilotHarness(),
 				new MockHarness(),
 			],
 		});
 
-		await orchestrator.execute(taskTree);
+		const signalCancellation = installCancellationHandlers({
+			orchestrator,
+			stderr: options.stderr ?? process.stderr,
+			signalTarget: options.signalTarget ?? process,
+		});
+
+		try {
+			await orchestrator.execute(taskTree);
+			await signalCancellation.settle();
+		} catch (error) {
+			await signalCancellation.settle();
+			if (isPiperCancellationError(error)) {
+				return exitCodeForSignal(error.signal);
+			}
+			throw error;
+		} finally {
+			signalCancellation.dispose();
+		}
+
 		return 0;
 	} catch (error) {
+		if (isPiperCancellationError(error)) {
+			return exitCodeForSignal(error.signal);
+		}
+
 		const message = error instanceof Error ? error.message : String(error);
 		(options.stderr ?? process.stderr).write(`${message}\n`);
 		return 1;

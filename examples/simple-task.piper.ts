@@ -2,11 +2,12 @@ import { task } from "@beyland/piper";
 
 export default function simpleTaskWorkflow() {
 	return task({
-		goal: "Inspect the current repository and describe the next implementation step.",
-		harness: "pi",
+		goal: "AHP smoke test: inspect Piper and report how Copilot is being launched.",
+		harness: "copilot",
 		context: [
-			"Stay inside the current workspace.",
-			"Summarize the codebase briefly before proposing the next step.",
+			"Read-only test run: do not edit files or run destructive commands.",
+			"Summarize the repository briefly, then explain that this task was launched through Piper's copilot harness.",
+			"Include the phrase 'Piper AHP smoke test complete' in the final response.",
 		],
 	});
 }

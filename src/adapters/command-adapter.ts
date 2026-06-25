@@ -21,6 +21,7 @@ export interface CommandHarnessOptions {
 interface CommandHarnessConfig {
 	name: string;
 	defaultCommand: string;
+	defaultArguments?: string[];
 	envPrefix: string;
 }
 
@@ -106,7 +107,8 @@ export class CommandHarness implements HarnessAdapter {
 		}
 
 		const executable = this.options.command ?? this.config.defaultCommand;
-		return `${shellEscape(executable)} ${shellEscape(prompt)}`;
+		const argumentsList = [...(this.config.defaultArguments ?? []), prompt];
+		return [executable, ...argumentsList].map(shellEscape).join(" ");
 	}
 
 	private buildEnvironment(
@@ -152,18 +154,35 @@ export class CommandHarness implements HarnessAdapter {
 		const progress = new AsyncQueue<ProgressUpdate>();
 		const completed = createDeferred<TaskResult>();
 		const errored = createDeferred<TaskError>();
+		let canceled = false;
+		let run: ReturnType<typeof spawnStreamingCommand> | undefined;
+
+		const cancelAttempt = () => {
+			canceled = true;
+			run?.cancel();
+		};
 
 		handle.setAttempt({
 			progress,
 			completed: completed.promise,
 			errored: errored.promise,
+			cancel: cancelAttempt,
 		});
 
 		void (async () => {
 			try {
 				const baseline = new Set(await listModifiedFiles(state.workspacePath));
+				if (canceled) {
+					progress.close();
+					errored.resolve({
+						message: `${this.config.name} task canceled`,
+						retryable: false,
+					});
+					return;
+				}
+
 				const command = this.buildCommand(state, attempt, failures);
-				const run = spawnStreamingCommand(command, {
+				run = spawnStreamingCommand(command, {
 					cwd: state.workspacePath,
 					env: this.buildEnvironment(state, attempt, failures),
 				});
@@ -172,7 +191,7 @@ export class CommandHarness implements HarnessAdapter {
 					progress,
 					completed: completed.promise,
 					errored: errored.promise,
-					cancel: run.cancel,
+					cancel: cancelAttempt,
 				});
 
 				for await (const update of run.progress) {
@@ -187,6 +206,16 @@ export class CommandHarness implements HarnessAdapter {
 				const currentFiles = await listModifiedFiles(state.workspacePath);
 				const modifiedFiles = currentFiles.filter((file) => !baseline.has(file));
 				progress.close();
+
+				if (canceled) {
+					errored.resolve({
+						message: `${this.config.name} task canceled`,
+						logs: [result.stdout, result.stderr].filter(Boolean).join("\n"),
+						modifiedFiles,
+						retryable: false,
+					});
+					return;
+				}
 
 				if (result.exitCode === 0) {
 					completed.resolve({

@@ -60,7 +60,7 @@ Built-in harnesses:
 
 1. `mock`: deterministic test harness
 2. `pi`: launches `PI_COMMAND` or `pi`
-3. `copilot`: launches `COPILOT_COMMAND` or `copilot` with `-p`
+3. `copilot`: launches `COPILOT_COMMAND` or `copilot` with `-p` by default
 
 Real CLI harnesses also support command templates:
 
@@ -69,6 +69,22 @@ COPILOT_COMMAND_TEMPLATE='copilot -p {prompt}' pnpm exec piper workflows/simple-
 ```
 
 Templates can use `{goal}`, `{model}`, `{context}`, `{workspacePath}`, `{prompt}`, `{retryReason}`, `{attempt}`, `{constraints}`, and `{protectedFiles}`. Values are shell-escaped before substitution.
+
+### Reflect Copilot sessions in VS Code with Agent Host
+
+The `copilot` harness can also run through VS Code's Agent Host Protocol (AHP) instead of spawning `copilot -p`. This creates an underlying `copilotcli` Agent Host session for each Piper task so VS Code can see the same Copilot sessions.
+
+```bash
+PIPER_COPILOT_HARNESS=ahp pnpm exec piper workflows/simple-task.piper.ts --workspace .
+```
+
+By default Piper discovers the host by running `code agent host`. You can customize discovery with:
+
+- `COPILOT_AHP_CODE_COMMAND`: command to run instead of `code`
+- `COPILOT_AHP_ADDRESS`: explicit Agent Host WebSocket address
+- `COPILOT_AHP_AUTO_START=0`: require `COPILOT_AHP_ADDRESS` instead of starting/discovering the host
+
+If Agent Host requests GitHub authentication, Piper uses `gh auth token` for GitHub protected resources.
 
 ### Compose agent workflows
 

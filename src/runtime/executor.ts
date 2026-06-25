@@ -44,6 +44,29 @@ type Waiter<T> = {
 	reject: (error: Error) => void;
 };
 
+type CancellationState = {
+	error: PiperCancellationError | null;
+	promise: Promise<PiperCancellationError>;
+	resolve: (error: PiperCancellationError) => void;
+};
+
+type ActiveTask = {
+	harness: HarnessAdapter;
+};
+
+function createCancellationState(): CancellationState {
+	let resolveCancellation!: (error: PiperCancellationError) => void;
+	const promise = new Promise<PiperCancellationError>((resolve) => {
+		resolveCancellation = resolve;
+	});
+
+	return {
+		error: null,
+		promise,
+		resolve: resolveCancellation,
+	};
+}
+
 class OutputStore {
 	private readonly artifacts = new Map<string, TaskResult>();
 	private readonly outputWaiters = new Map<string, Waiter<string>[]>();
@@ -343,6 +366,20 @@ function createRunId(): string {
 	return `${timestamp}-${random}`;
 }
 
+export class PiperCancellationError extends Error {
+	readonly signal?: NodeJS.Signals;
+
+	constructor(message = "Piper execution cancelled.", signal?: NodeJS.Signals) {
+		super(message);
+		this.name = "PiperCancellationError";
+		this.signal = signal;
+	}
+}
+
+export function isPiperCancellationError(error: unknown): error is PiperCancellationError {
+	return error instanceof PiperCancellationError;
+}
+
 class OutputPersistence {
 	readonly runId: string;
 	readonly artifactPath: string;
@@ -386,7 +423,9 @@ export class PiperOrchestrator {
 	private readonly hooks: RuntimeHooks;
 	private readonly retryLimit: number;
 	private readonly outputPersistence: OutputPersistence | null;
+	private readonly activeTasks = new Map<TaskHandle, ActiveTask>();
 	private artifacts = new OutputStore();
+	private cancellationState = createCancellationState();
 	private readonly workspacePath: string;
 	private taskIndex = 0;
 	private completedTasks = 0;
@@ -407,6 +446,10 @@ export class PiperOrchestrator {
 	}
 
 	async execute(tree: TaskTree): Promise<ExecutionSummary> {
+		if (!this.cancellationState.error) {
+			this.cancellationState = createCancellationState();
+		}
+
 		const normalizedTree = normalizeTree(tree);
 		const outputGraph = collectOutputGraph(normalizedTree);
 		validateOutputGraph(outputGraph);
@@ -414,26 +457,64 @@ export class PiperOrchestrator {
 		await this.persistOutputs();
 
 		try {
+			this.throwIfCancelled();
 			await this.executeNode(normalizedTree, ROOT_CONSTRAINT_SCOPE);
+			this.throwIfCancelled();
 		} catch (error) {
 			this.artifacts.closePending(error);
-			await this.persistOutputs();
+			await this.persistOutputs(isPiperCancellationError(error) ? this.createSummary() : undefined);
 			throw error;
 		}
 
 		this.artifacts.closePending();
 
-		const summary = {
+		const summary = this.createSummary();
+
+		await this.persistOutputs(summary);
+		this.hooks.summary(summary);
+		return summary;
+	}
+
+	async cancel(
+		reason: string | PiperCancellationError = "Piper execution cancelled.",
+		signal?: NodeJS.Signals,
+	): Promise<void> {
+		const error =
+			reason instanceof PiperCancellationError
+				? reason
+				: new PiperCancellationError(reason, signal);
+
+		if (!this.cancellationState.error) {
+			this.cancellationState.error = error;
+			this.cancellationState.resolve(error);
+		}
+
+		this.artifacts.closePending(error);
+
+		const cancelErrors: unknown[] = [];
+		for (const [handle, activeTask] of this.activeTasks) {
+			try {
+				activeTask.harness.cancel(handle);
+			} catch (cancelError) {
+				cancelErrors.push(cancelError);
+			}
+		}
+
+		await this.persistOutputs(this.createSummary());
+
+		if (cancelErrors.length > 0) {
+			throw new AggregateError(cancelErrors, "Failed to cancel one or more active tasks.");
+		}
+	}
+
+	private createSummary(): ExecutionSummary {
+		return {
 			completedTasks: this.completedTasks,
 			failedTasks: this.failedTasks,
 			artifacts: this.artifacts.snapshot(),
 			runId: this.outputPersistence?.runId ?? null,
 			artifactPath: this.outputPersistence?.artifactPath ?? null,
 		};
-
-		await this.persistOutputs(summary);
-		this.hooks.summary(summary);
-		return summary;
 	}
 
 	private async persistOutputs(summary?: ExecutionSummary): Promise<void> {
@@ -461,18 +542,20 @@ export class PiperOrchestrator {
 	private async resolveContext(values: ContextValue[] = []): Promise<string[]> {
 		const context = this.createRuntimeValueContext();
 
-		return Promise.all(
-			values.map(async (value) => {
-				if (typeof value === "string") {
-					return value;
-				}
+		return this.cancelable(
+			Promise.all(
+				values.map(async (value) => {
+					if (typeof value === "string") {
+						return value;
+					}
 
-				if (isRuntimeValue(value)) {
-					return value.resolve(context);
-				}
+					if (isRuntimeValue(value)) {
+						return value.resolve(context);
+					}
 
-				throw new Error("Encountered an invalid context value.");
-			}),
+					throw new Error("Encountered an invalid context value.");
+				}),
+			),
 		);
 	}
 
@@ -486,7 +569,12 @@ export class PiperOrchestrator {
 		const outcome = await Promise.race([
 			handle.completed.then((result) => ({ kind: "completed" as const, result })),
 			handle.errored.then((error) => ({ kind: "errored" as const, error })),
+			this.cancellationState.promise.then((error) => ({ kind: "cancelled" as const, error })),
 		]);
+
+		if (outcome.kind === "cancelled") {
+			throw outcome.error;
+		}
 
 		await progressTask;
 
@@ -506,6 +594,8 @@ export class PiperOrchestrator {
 			throw new Error(`No harness registered for "${node.props.harness}".`);
 		}
 
+		this.throwIfCancelled();
+
 		const taskId = `task-${++this.taskIndex}`;
 		const resolvedContext = await this.resolveContext(node.props.context);
 		const childScope = extendConstraintScope(scope, node.props.constraints);
@@ -514,6 +604,8 @@ export class PiperOrchestrator {
 		let failures: string[] = [];
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+			this.throwIfCancelled();
+
 			const info: TaskAttemptInfo = {
 				id: taskId,
 				goal: node.props.goal,
@@ -539,9 +631,15 @@ export class PiperOrchestrator {
 			}
 
 			let result: TaskResult;
+			let unregisterActiveTask: (() => void) | undefined;
 			try {
+				unregisterActiveTask = this.registerActiveTask(taskHandle as TaskHandle, harness);
 				result = await this.observeAttempt(taskHandle as TaskHandle, info);
 			} catch (rawError) {
+				if (isPiperCancellationError(rawError)) {
+					throw rawError;
+				}
+
 				const error = toTaskError(rawError);
 				const constraintFailures = await enforceProtectedFiles({
 					workspacePath: this.workspacePath,
@@ -570,7 +668,11 @@ export class PiperOrchestrator {
 				this.hooks.taskFailed(info, error);
 				node.props["on:error"]?.(error);
 				throw error;
+			} finally {
+				unregisterActiveTask?.();
 			}
+
+			this.throwIfCancelled();
 
 			const constraintFailures = await enforceProtectedFiles({
 				workspacePath: this.workspacePath,
@@ -645,6 +747,10 @@ export class PiperOrchestrator {
 				await this.executeSequence(node.props.children, scope);
 				return;
 			} catch (rawError) {
+				if (isPiperCancellationError(rawError)) {
+					throw rawError;
+				}
+
 				const error = toTaskError(rawError, "Error boundary caught a failure.");
 				if (attempts >= maxRetries) {
 					node.props["on:fatal"]?.(error);
@@ -679,6 +785,7 @@ export class PiperOrchestrator {
 		);
 
 		await this.executeSequence(node.props.children, childScope);
+		this.throwIfCancelled();
 
 		const failures = await runValidations(node.props.validate, this.createRuntimeValueContext());
 		if (failures.length > 0) {
@@ -692,6 +799,7 @@ export class PiperOrchestrator {
 
 	private async executeSequence(children: TaskNode[], scope: ConstraintScope): Promise<void> {
 		for (const child of children) {
+			this.throwIfCancelled();
 			await this.executeNode(child, scope);
 		}
 	}
@@ -700,6 +808,8 @@ export class PiperOrchestrator {
 		if (!node) {
 			return;
 		}
+
+		this.throwIfCancelled();
 
 		switch (node.kind) {
 			case "task":
@@ -720,5 +830,45 @@ export class PiperOrchestrator {
 			default:
 				throw new Error(`Unsupported task node: ${(node as { kind?: string }).kind ?? "unknown"}`);
 		}
+	}
+
+	private registerActiveTask(handle: TaskHandle, harness: HarnessAdapter): () => void {
+		this.activeTasks.set(handle, { harness });
+
+		if (this.cancellationState.error) {
+			harness.cancel(handle);
+		}
+
+		return () => {
+			this.activeTasks.delete(handle);
+		};
+	}
+
+	private throwIfCancelled(): void {
+		if (this.cancellationState.error) {
+			throw this.cancellationState.error;
+		}
+	}
+
+	private async cancelable<T>(promise: Promise<T>): Promise<T> {
+		this.throwIfCancelled();
+
+		const outcome = await Promise.race([
+			promise.then(
+				(value) => ({ kind: "resolved" as const, value }),
+				(error) => ({ kind: "rejected" as const, error }),
+			),
+			this.cancellationState.promise.then((error) => ({ kind: "cancelled" as const, error })),
+		]);
+
+		if (outcome.kind === "cancelled") {
+			throw outcome.error;
+		}
+
+		if (outcome.kind === "rejected") {
+			throw outcome.error;
+		}
+
+		return outcome.value;
 	}
 }

@@ -6,12 +6,14 @@ export class ManagedTaskHandle implements TaskHandle {
 	private currentCompleted: Promise<TaskResult>;
 	private currentErrored: Promise<TaskError>;
 	private cancelCurrentAttempt: () => void;
+	private canceled: boolean;
 
 	constructor() {
 		this.currentProgress = new AsyncQueue<ProgressUpdate>();
 		this.currentCompleted = new Promise<TaskResult>(() => undefined);
 		this.currentErrored = new Promise<TaskError>(() => undefined);
 		this.cancelCurrentAttempt = () => undefined;
+		this.canceled = false;
 	}
 
 	get progress(): AsyncIterable<ProgressUpdate> {
@@ -36,9 +38,14 @@ export class ManagedTaskHandle implements TaskHandle {
 		this.currentCompleted = params.completed;
 		this.currentErrored = params.errored;
 		this.cancelCurrentAttempt = params.cancel ?? (() => undefined);
+
+		if (this.canceled) {
+			this.cancelCurrentAttempt();
+		}
 	}
 
 	cancel(): void {
+		this.canceled = true;
 		this.cancelCurrentAttempt();
 	}
 }

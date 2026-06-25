@@ -37,4 +37,10 @@ export { PiHarness } from "./adapters/pi-adapter.js";
 export type { PiHarnessOptions } from "./adapters/pi-adapter.js";
 export { CopilotCliHarness } from "./adapters/copilot-cli-adapter.js";
 export type { CopilotCliHarnessOptions } from "./adapters/copilot-cli-adapter.js";
-export { PiperOrchestrator } from "./runtime/executor.js";
+export { CopilotAhpHarness } from "./adapters/copilot-ahp-adapter.js";
+export type { CopilotAhpHarnessOptions } from "./adapters/copilot-ahp-adapter.js";
+export {
+	isPiperCancellationError,
+	PiperCancellationError,
+	PiperOrchestrator,
+} from "./runtime/executor.js";
