@@ -10,7 +10,7 @@ You describe a workflow with TypeScript builder functions. The CLI compiles that
 
 That is the whole shape of the system.
 
-There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. Piper provides the orchestrator, and it runs workflows with normal TypeScript and JavaScript control flow.
+There is no secret boss agent in this repo. There is no LLM inside this framework deciding what to do next. Piper provides the orchestrator, and it runs workflows with normal TypeScript and JavaScript control flow. The `piper generate` command is an authoring helper: it asks a configured harness to write a workflow file before normal orchestration begins.
 
 ## Project layout
 
@@ -69,7 +69,7 @@ Its job is to:
 4. create the orchestrator with harnesses
 5. run the workflow
 
-It is glue code.
+It is glue code. In generate mode, it first runs a single authoring task through a configured harness, validates the generated `.piper.ts` file with the same compile/load path, and only executes that generated workflow when explicitly requested.
 
 ### `src/core`
 
@@ -186,9 +186,22 @@ A denial message should tell the harness what happened and discourage workaround
 This file is restricted by the active Piper workflow. Do not try to access it through another tool or alternate path. Continue the task using the remaining available context.
 ```
 
+## Workflow generation
+
+`piper generate` is a bootstrap path for creating workflow files from a prompt.
+
+The important boundary is that generation happens before workflow execution:
+
+1. the user provides an initial prompt
+2. Piper asks a configured harness, such as Copilot or Pi, to write a `.piper.ts` file
+3. Piper compiles and loads that file to verify it is a valid workflow
+4. Piper leaves the file on disk for review, or runs it only when `--execute` is provided
+
+This keeps the generated workflow explicit and inspectable. The runtime still executes a task tree; it does not dynamically ask a model what node to run next.
+
 ## What this framework is not
 
-It is not a general autonomous planner. It is not a scheduler backed by a hidden LLM. It is not a multi-agent system by itself. It is a deterministic orchestration framework with a TypeScript builder authoring layer.
+It is not a hidden autonomous runtime planner. It is not a scheduler backed by an implicit LLM. It is not a multi-agent system by itself. It is a deterministic orchestration framework with a TypeScript builder authoring layer, plus an explicit workflow-generation command for bootstrapping that layer.
 
 ## How to read an example workflow
 
