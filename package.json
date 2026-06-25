@@ -34,7 +34,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "esbuild": "^0.25.5"
+    "esbuild": "^0.25.5",
+    "posthog-node": "5.38.5"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",
