@@ -60,12 +60,12 @@ Built-in harnesses:
 
 1. `mock`: deterministic test harness
 2. `pi`: launches `PI_COMMAND` or `pi`
-3. `copilot`: launches `COPILOT_COMMAND` or `copilot`
+3. `copilot`: launches `COPILOT_COMMAND` or `copilot` with `-p`
 
 Real CLI harnesses also support command templates:
 
 ```bash
-COPILOT_COMMAND_TEMPLATE='copilot {prompt}' pnpm exec piper workflows/simple-task.piper.ts --workspace .
+COPILOT_COMMAND_TEMPLATE='copilot -p {prompt}' pnpm exec piper workflows/simple-task.piper.ts --workspace .
 ```
 
 Templates can use `{goal}`, `{model}`, `{context}`, `{workspacePath}`, `{prompt}`, `{retryReason}`, `{attempt}`, `{constraints}`, and `{protectedFiles}`. Values are shell-escaped before substitution.
