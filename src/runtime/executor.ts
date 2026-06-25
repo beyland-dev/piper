@@ -27,10 +27,37 @@ class NullReporter implements RuntimeReporter {
   summary(): void {}
 }
 
+type Waiter<T> = {
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
+};
+
 class OutputStore {
   private readonly outputs = new Map<string, TaskResult>();
-  private readonly outputWaiters = new Map<string, Array<(value: string) => void>>();
-  private readonly resultWaiters = new Map<string, Array<(value: TaskResult) => void>>();
+  private readonly outputWaiters = new Map<string, Waiter<string>[]>();
+  private readonly resultWaiters = new Map<string, Waiter<TaskResult>[]>();
+  private readonly declaredOutputs = new Set<string>();
+  private readonly pendingProducers = new Map<string, number>();
+  private readonly failures = new Map<string, Error>();
+
+  constructor(declarations: Map<string, number> = new Map()) {
+    this.declareAll(declarations);
+  }
+
+  declareAll(declarations: Map<string, number>): void {
+    for (const [name, count] of declarations) {
+      this.declare(name, count);
+    }
+  }
+
+  declare(name: string, count = 1): void {
+    if (count <= 0) {
+      return;
+    }
+
+    this.declaredOutputs.add(name);
+    this.pendingProducers.set(name, (this.pendingProducers.get(name) ?? 0) + count);
+  }
 
   set(name: string, result: TaskResult): void {
     if (this.outputs.has(name)) {
@@ -38,14 +65,43 @@ class OutputStore {
     }
 
     this.outputs.set(name, result);
-    for (const resolve of this.outputWaiters.get(name) ?? []) {
-      resolve(result.output);
+    this.failures.delete(name);
+    this.pendingProducers.set(name, 0);
+
+    for (const waiter of this.outputWaiters.get(name) ?? []) {
+      waiter.resolve(result.output);
     }
-    for (const resolve of this.resultWaiters.get(name) ?? []) {
-      resolve(result);
+    for (const waiter of this.resultWaiters.get(name) ?? []) {
+      waiter.resolve(result);
     }
     this.outputWaiters.delete(name);
     this.resultWaiters.delete(name);
+  }
+
+  fail(name: string, error = this.createTaskFailedError(name)): void {
+    if (!this.declaredOutputs.has(name) || this.outputs.has(name) || this.failures.has(name)) {
+      return;
+    }
+
+    const remainingProducers = Math.max(0, (this.pendingProducers.get(name) ?? 0) - 1);
+    this.pendingProducers.set(name, remainingProducers);
+
+    if (remainingProducers === 0) {
+      this.failures.set(name, error);
+      this.rejectWaiters(name, error);
+    }
+  }
+
+  closePending(reason?: unknown): void {
+    for (const name of this.declaredOutputs) {
+      if (this.outputs.has(name) || this.failures.has(name)) {
+        continue;
+      }
+
+      const error = reason ? this.createExecutionAbortedError(name) : this.createNeverProducedError(name);
+      this.failures.set(name, error);
+      this.rejectWaiters(name, error);
+    }
   }
 
   async waitForOutput(name: string): Promise<string> {
@@ -54,9 +110,18 @@ class OutputStore {
       return existing.output;
     }
 
-    return new Promise<string>((resolve) => {
+    const failure = this.failures.get(name);
+    if (failure) {
+      throw failure;
+    }
+
+    if (!this.declaredOutputs.has(name)) {
+      throw this.createUnknownOutputError(name);
+    }
+
+    return new Promise<string>((resolve, reject) => {
       const waiters = this.outputWaiters.get(name) ?? [];
-      waiters.push(resolve);
+      waiters.push({ resolve, reject });
       this.outputWaiters.set(name, waiters);
     });
   }
@@ -67,9 +132,18 @@ class OutputStore {
       return existing;
     }
 
-    return new Promise<TaskResult>((resolve) => {
+    const failure = this.failures.get(name);
+    if (failure) {
+      throw failure;
+    }
+
+    if (!this.declaredOutputs.has(name)) {
+      throw this.createUnknownOutputError(name);
+    }
+
+    return new Promise<TaskResult>((resolve, reject) => {
       const waiters = this.resultWaiters.get(name) ?? [];
-      waiters.push(resolve);
+      waiters.push({ resolve, reject });
       this.resultWaiters.set(name, waiters);
     });
   }
@@ -77,6 +151,74 @@ class OutputStore {
   snapshot(): Record<string, string> {
     return Object.fromEntries([...this.outputs.entries()].map(([name, result]) => [name, result.output]));
   }
+
+  private rejectWaiters(name: string, error: Error): void {
+    for (const waiter of this.outputWaiters.get(name) ?? []) {
+      waiter.reject(error);
+    }
+    for (const waiter of this.resultWaiters.get(name) ?? []) {
+      waiter.reject(error);
+    }
+
+    this.outputWaiters.delete(name);
+    this.resultWaiters.delete(name);
+  }
+
+  private createUnknownOutputError(name: string): Error {
+    return new Error(
+      `Unknown output "${name}". No task declares output="${name}". Add or fix output="${name}" on an upstream task.`
+    );
+  }
+
+  private createTaskFailedError(name: string): Error {
+    return new Error(`Output "${name}" was not produced because its task failed.`);
+  }
+
+  private createExecutionAbortedError(name: string): Error {
+    return new Error(`Output "${name}" was not produced because execution aborted.`);
+  }
+
+  private createNeverProducedError(name: string): Error {
+    return new Error(`Output "${name}" was declared but never produced.`);
+  }
+}
+
+function collectDeclaredOutputs(node: TaskNode): Map<string, number> {
+  const declarations = new Map<string, number>();
+
+  const visit = (current: TaskNode): void => {
+    if (!current) {
+      return;
+    }
+
+    switch (current.kind) {
+      case "task":
+        if (current.props.output) {
+          declarations.set(current.props.output, (declarations.get(current.props.output) ?? 0) + 1);
+        }
+        return;
+      case "sequence":
+      case "guarded":
+      case "error-boundary":
+        for (const child of current.props.children) {
+          visit(child);
+        }
+        return;
+      case "suspense":
+        for (const child of current.props.children) {
+          visit(child);
+        }
+        if (current.props.fallback && typeof current.props.fallback !== "string") {
+          visit(current.props.fallback);
+        }
+        return;
+      default:
+        return;
+    }
+  };
+
+  visit(node);
+  return declarations;
 }
 
 function toTaskError(error: unknown, fallbackMessage = "Task failed"): TaskError {
@@ -103,7 +245,7 @@ export class WorkflowExecutor {
   private readonly adapters = new Map<string, AgentAdapter>();
   private readonly reporter: RuntimeReporter;
   private readonly retryLimit: number;
-  private readonly outputs = new OutputStore();
+  private outputs = new OutputStore();
   private readonly workspacePath: string;
   private taskIndex = 0;
   private completedTasks = 0;
@@ -120,7 +262,17 @@ export class WorkflowExecutor {
   }
 
   async execute(tree: TaskTree): Promise<ExecutionSummary> {
-    await this.executeNode(normalizeTree(tree), ROOT_CONSTRAINT_SCOPE);
+    const normalizedTree = normalizeTree(tree);
+    this.outputs = new OutputStore(collectDeclaredOutputs(normalizedTree));
+
+    try {
+      await this.executeNode(normalizedTree, ROOT_CONSTRAINT_SCOPE);
+    } catch (error) {
+      this.outputs.closePending(error);
+      throw error;
+    }
+
+    this.outputs.closePending();
 
     const summary = {
       completedTasks: this.completedTasks,
@@ -237,6 +389,10 @@ export class WorkflowExecutor {
           continue;
         }
 
+        if (node.props.output) {
+          this.outputs.fail(node.props.output);
+        }
+
         this.failedTasks += 1;
         this.reporter.taskFailed(info, error);
         node.props["on:error"]?.(error);
@@ -264,6 +420,11 @@ export class WorkflowExecutor {
           modifiedFiles: result.modifiedFiles,
           retryable: false
         };
+
+        if (node.props.output) {
+          this.outputs.fail(node.props.output);
+        }
+
         this.failedTasks += 1;
         this.reporter.taskFailed(info, error);
         node.props["on:error"]?.(error);
@@ -319,6 +480,7 @@ export class WorkflowExecutor {
         };
 
         const fallback = node.props.fallback(error, retry);
+        this.outputs.declareAll(collectDeclaredOutputs(fallback));
         await this.executeNode(fallback, scope);
 
         if (!retryRequested) {

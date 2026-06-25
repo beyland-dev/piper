@@ -54,6 +54,17 @@ To run one:
 pnpm run agent-run -- examples/simple-task.agent.tsx --workspace .
 ```
 
+Output dependencies are explicit:
+
+```tsx
+<Task goal="Create plan" agent="mock" output="plan" />
+<Task goal="Implement feature" agent="mock" context={[useOutput("plan")]} />
+```
+
+`output="plan"` publishes that task result.
+`useOutput("plan")` waits for it.
+If no task declares that output, or the producing task fails before publishing it, execution fails with a clear runtime error.
+
 ## Mental model
 
 Think about the system like this:

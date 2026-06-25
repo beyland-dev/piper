@@ -1,8 +1,8 @@
 import { Task, useOutput } from "agent-runtime";
 
-import { WithImplementationPlan } from "./shared-tasks/with-implementation-plan";
-import { WithRiskReview } from "./shared-tasks/with-risk-review";
-import { WithTests } from "./shared-tasks/with-tests";
+import { WithImplementationPlan } from "./shared-tasks/with-implementation-plan.js";
+import { WithRiskReview } from "./shared-tasks/with-risk-review.js";
+import { WithTests } from "./shared-tasks/with-tests.js";
 
 export default function ComposableOAuthWorkflow() {
   return (
