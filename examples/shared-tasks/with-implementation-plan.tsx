@@ -1,4 +1,4 @@
-import { Suspense, Task, type TaskNode } from "agent-runtime";
+import { Parallel, Task, type TaskNode } from "agent-runtime";
 
 interface WithImplementationPlanProps {
   planningGoal: string;
@@ -25,7 +25,7 @@ export function WithImplementationPlan({
         output={planOutput}
       />
 
-      <Suspense fallback={fallback}>{children}</Suspense>
+      <Parallel fallback={fallback}>{children}</Parallel>
     </>
   );
 }

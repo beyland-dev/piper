@@ -27,13 +27,13 @@ export function isSignal(value: unknown): value is Signal<unknown> {
   );
 }
 
-export function useOutput(name: string): Signal<string> {
-  return createSignal(`useOutput(${name})`, (context) => context.readOutput(name));
+export function output(name: string): Signal<string> {
+  return createSignal(`output(${name})`, (context) => context.readOutput(name));
 }
 
-export function computed<T>(
+export function derive<T>(
   resolver: (context: SignalRuntimeContext) => MaybePromise<T>,
-  description = "computed"
+  description = "derive"
 ): Signal<T> {
   return createSignal(description, resolver);
 }

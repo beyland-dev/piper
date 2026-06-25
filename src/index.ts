@@ -1,24 +1,24 @@
 export { Task } from "./core/task.js";
-export { Suspense } from "./core/suspense.js";
-export { ErrorBoundary } from "./core/error-boundary.js";
-export { Guarded } from "./core/guarded.js";
-export { computed, isSignal, useOutput } from "./core/use-output.js";
+export { Parallel } from "./core/parallel.js";
+export { Recover } from "./core/recover.js";
+export { Protect } from "./core/protect.js";
+export { derive, isSignal, output } from "./core/output.js";
 export type {
   AgentAdapter,
   ContextValue,
-  ErrorBoundaryNode,
-  ErrorBoundaryProps,
   ExecutionSummary,
   ExecutorOptions,
-  GuardedNode,
-  GuardedProps,
+  ParallelNode,
+  ParallelProps,
   ProgressUpdate,
+  ProtectNode,
+  ProtectProps,
+  RecoverNode,
+  RecoverProps,
   RuntimeReporter,
   SequenceNode,
   Signal,
   SignalRuntimeContext,
-  SuspenseNode,
-  SuspenseProps,
   TaskAttemptInfo,
   TaskError,
   TaskHandle,

@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MockAdapter, Suspense, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, Parallel, Task, WorkflowExecutor } from "../src/index.js";
 
-describe("Suspense", () => {
+describe("Parallel", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -14,7 +14,7 @@ describe("Suspense", () => {
   });
 
   it("runs child tasks concurrently", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-suspense-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-parallel-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({
@@ -32,7 +32,7 @@ describe("Suspense", () => {
 
     const start = Date.now();
     await executor.execute(
-      Suspense({
+      Parallel({
         children: [
           Task({ goal: "Task A", agent: "mock" }),
           Task({ goal: "Task B", agent: "mock" })

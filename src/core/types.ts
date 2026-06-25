@@ -63,19 +63,19 @@ export interface TaskProps {
   "on:error"?: (error: TaskError) => void;
 }
 
-export interface SuspenseProps {
+export interface ParallelProps {
   fallback?: TaskNode | string;
   children?: TaskNode | TaskNode[];
 }
 
-export interface ErrorBoundaryProps {
+export interface RecoverProps {
   fallback: (error: TaskError, retry: () => void) => TaskNode;
   maxRetries?: number;
   "on:fatal"?: (error: TaskError) => void;
   children?: TaskNode | TaskNode[];
 }
 
-export interface GuardedProps {
+export interface ProtectProps {
   protectedFiles: string[];
   validate?: ValidationValue[];
   children?: TaskNode | TaskNode[];
@@ -88,29 +88,29 @@ export interface TaskNodeBase<K extends string, P> {
 
 export interface TaskComponentProps extends TaskProps {}
 
-export interface SuspenseComponentProps extends Omit<SuspenseProps, "children"> {
+export interface ParallelComponentProps extends Omit<ParallelProps, "children"> {
   children: TaskNode[];
 }
 
-export interface ErrorBoundaryComponentProps extends Omit<ErrorBoundaryProps, "children"> {
+export interface RecoverComponentProps extends Omit<RecoverProps, "children"> {
   children: TaskNode[];
 }
 
-export interface GuardedComponentProps extends Omit<GuardedProps, "children"> {
+export interface ProtectComponentProps extends Omit<ProtectProps, "children"> {
   children: TaskNode[];
 }
 
 export interface TaskElement extends TaskNodeBase<"task", TaskComponentProps> {}
-export interface SuspenseNode extends TaskNodeBase<"suspense", SuspenseComponentProps> {}
-export interface ErrorBoundaryNode extends TaskNodeBase<"error-boundary", ErrorBoundaryComponentProps> {}
-export interface GuardedNode extends TaskNodeBase<"guarded", GuardedComponentProps> {}
+export interface ParallelNode extends TaskNodeBase<"parallel", ParallelComponentProps> {}
+export interface RecoverNode extends TaskNodeBase<"recover", RecoverComponentProps> {}
+export interface ProtectNode extends TaskNodeBase<"protect", ProtectComponentProps> {}
 export interface SequenceNode extends TaskNodeBase<"sequence", { children: TaskNode[] }> {}
 
 export type TaskNode =
   | TaskElement
-  | SuspenseNode
-  | ErrorBoundaryNode
-  | GuardedNode
+  | ParallelNode
+  | RecoverNode
+  | ProtectNode
   | SequenceNode
   | null
   | undefined

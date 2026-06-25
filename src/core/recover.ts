@@ -1,9 +1,9 @@
 import { normalizeChildren } from "./node-utils.js";
-import type { ErrorBoundaryNode, ErrorBoundaryProps } from "./types.js";
+import type { RecoverNode, RecoverProps } from "./types.js";
 
-export function ErrorBoundary(props: ErrorBoundaryProps): ErrorBoundaryNode {
+export function Recover(props: RecoverProps): RecoverNode {
   return {
-    kind: "error-boundary",
+    kind: "recover",
     props: {
       ...props,
       maxRetries: props.maxRetries ?? 3,

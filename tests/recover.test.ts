@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ErrorBoundary, MockAdapter, Task, WorkflowExecutor } from "../src/index.js";
+import { MockAdapter, Recover, Task, WorkflowExecutor } from "../src/index.js";
 
-describe("ErrorBoundary", () => {
+describe("Recover", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -14,7 +14,7 @@ describe("ErrorBoundary", () => {
   });
 
   it("runs fallback recovery work and retries the failed branch", async () => {
-    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-boundary-"));
+    const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-recover-"));
     directories.push(workspacePath);
 
     const adapter = new MockAdapter({
@@ -36,7 +36,7 @@ describe("ErrorBoundary", () => {
     });
 
     const summary = await executor.execute(
-      ErrorBoundary({
+      Recover({
         maxRetries: 1,
         fallback: (_error, retry) =>
           Task({

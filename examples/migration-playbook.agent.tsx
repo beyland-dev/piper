@@ -1,4 +1,4 @@
-import { Guarded, Suspense, Task, computed, useOutput } from "agent-runtime";
+import { Parallel, Protect, Task, derive, output } from "agent-runtime";
 
 export default function MigrationPlaybookWorkflow() {
   return (
@@ -13,13 +13,13 @@ export default function MigrationPlaybookWorkflow() {
         output="inventory"
       />
 
-      <Suspense fallback="Designing migration tracks for API and data changes...">
+      <Parallel fallback="Designing migration tracks for API and data changes...">
         <Task
           goal="Design the API compatibility track for the migration"
           agent="pi"
           context={[
-            useOutput("inventory"),
-            computed(({ workspacePath }) => `Workspace root for this migration: ${workspacePath}`, "workspace root")
+            output("inventory"),
+            derive(({ workspacePath }) => `Workspace root for this migration: ${workspacePath}`, "workspace root")
           ]}
           output="api-track"
         />
@@ -27,18 +27,18 @@ export default function MigrationPlaybookWorkflow() {
         <Task
           goal="Design the data backfill and cutover track for the migration"
           agent="pi"
-          context={[useOutput("inventory")]}
+          context={[output("inventory")]}
           output="data-track"
         />
-      </Suspense>
+      </Parallel>
 
       <Task
         goal="Compose a final migration playbook from both tracks"
         agent="pi"
         context={[
-          useOutput("api-track"),
-          useOutput("data-track"),
-          computed(async ({ readTaskResult }) => {
+          output("api-track"),
+          output("data-track"),
+          derive(async ({ readTaskResult }) => {
             const apiTrack = await readTaskResult("api-track");
             const dataTrack = await readTaskResult("data-track");
             return `The API track modified ${apiTrack.modifiedFiles.length} files; the data track modified ${dataTrack.modifiedFiles.length} files.`;
@@ -46,28 +46,28 @@ export default function MigrationPlaybookWorkflow() {
         ]}
         output="migration-playbook"
         validate={[
-          computed(async ({ readOutput }) => {
+          derive(async ({ readOutput }) => {
             const playbook = (await readOutput("migration-playbook")).toLowerCase();
             return playbook.includes("rollback") && playbook.includes("cutover");
           }, "playbook mentions cutover and rollback")
         ]}
       />
 
-      <Guarded
+      <Protect
         protectedFiles={["src/legacy/billing.ts", "migrations/001_initial.sql"]}
         validate={[
-          computed(async ({ readOutput }) => (await readOutput("migration-playbook")).includes("phase"), "playbook is phased")
+          derive(async ({ readOutput }) => (await readOutput("migration-playbook")).includes("phase"), "playbook is phased")
         ]}
       >
         <Task
           goal="Review the migration playbook for sequencing and rollback gaps"
           agent="pi"
           context={[
-            useOutput("migration-playbook"),
+            output("migration-playbook"),
             "Focus on dependency ordering, rollback checkpoints, and stakeholder coordination."
           ]}
         />
-      </Guarded>
+      </Protect>
     </>
   );
 }

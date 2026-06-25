@@ -1,4 +1,4 @@
-import { Task, computed, useOutput } from "agent-runtime";
+import { Task, derive, output } from "agent-runtime";
 
 import { WithImplementationPlan } from "../examples/shared-tasks/with-implementation-plan.js";
 import { WithRiskReview } from "../examples/shared-tasks/with-risk-review.js";
@@ -16,8 +16,8 @@ export default function RepoDevelopmentWorkflow() {
           goal="Implement the planned improvement, keeping the change narrow and adding or updating focused tests"
           agent="pi"
           context={[
-            useOutput("repo-improvement-plan"),
-            computed(async ({ readTaskResult }) => {
+            output("repo-improvement-plan"),
+            derive(async ({ readTaskResult }) => {
               const plan = await readTaskResult("repo-improvement-plan");
               return `The planning step modified ${plan.modifiedFiles.length} files while preparing the recommendation.`;
             }, "repo improvement plan file count"),
@@ -27,7 +27,7 @@ export default function RepoDevelopmentWorkflow() {
           output="implementation-summary"
           validate={[
             "pnpm typecheck",
-            computed(async ({ readOutput }) => {
+            derive(async ({ readOutput }) => {
               const plan = (await readOutput("repo-improvement-plan")).toLowerCase();
               return plan.includes("test") || plan.includes("validation");
             }, "implementation plan includes testing guidance")
@@ -38,8 +38,8 @@ export default function RepoDevelopmentWorkflow() {
           goal="Update README guidance only if the implemented improvement changes how maintainers should author or run workflows"
           agent="pi"
           context={[
-            useOutput("repo-improvement-plan"),
-            useOutput("implementation-summary"),
+            output("repo-improvement-plan"),
+            output("implementation-summary"),
             "Skip documentation edits when the change is purely internal and does not affect authoring, runtime behavior, or development commands."
           ]}
         />
@@ -54,8 +54,8 @@ export default function RepoDevelopmentWorkflow() {
           goal="Write a short maintainer handoff summary for the completed repository improvement"
           agent="pi"
           context={[
-            useOutput("implementation-summary"),
-            useOutput("repo-risk-review"),
+            output("implementation-summary"),
+            output("repo-risk-review"),
             "Summarize what changed, why it was chosen, and what a maintainer should verify before merging."
           ]}
           output="maintainer-handoff"

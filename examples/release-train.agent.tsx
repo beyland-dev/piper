@@ -1,8 +1,8 @@
-import { ErrorBoundary, Guarded, Suspense, Task, computed, useOutput } from "agent-runtime";
+import { Parallel, Protect, Recover, Task, derive, output } from "agent-runtime";
 
 export default function ReleaseTrainWorkflow() {
   return (
-    <ErrorBoundary
+    <Recover
       maxRetries={1}
       fallback={(error, retry) => (
         <Task
@@ -27,23 +27,23 @@ export default function ReleaseTrainWorkflow() {
         goal="Draft a release checklist and deployment sequence"
         agent="pi"
         context={[
-          useOutput("audit"),
-          computed(async ({ readTaskResult }) => {
+          output("audit"),
+          derive(async ({ readTaskResult }) => {
             const audit = await readTaskResult("audit");
             return `Files touched during the audit: ${audit.modifiedFiles.join(", ") || "none"}`;
           }, "audit modified files")
         ]}
         output="release-plan"
         validate={[
-          computed(async ({ readOutput }) => (await readOutput("audit")).trim().length > 0, "audit output is present")
+          derive(async ({ readOutput }) => (await readOutput("audit")).trim().length > 0, "audit output is present")
         ]}
       />
 
-      <Suspense fallback="Preparing release notes and rollout guidance in parallel...">
+      <Parallel fallback="Preparing release notes and rollout guidance in parallel...">
         <Task
           goal="Write changelog entries and operator notes for the release"
           agent="pi"
-          context={[useOutput("release-plan")]}
+          context={[output("release-plan")]}
           output="release-notes"
         />
 
@@ -51,20 +51,20 @@ export default function ReleaseTrainWorkflow() {
           goal="Produce a rollout and rollback guide for the release"
           agent="pi"
           context={[
-            useOutput("release-plan"),
-            computed(async ({ readTaskResult }) => {
+            output("release-plan"),
+            derive(async ({ readTaskResult }) => {
               const plan = await readTaskResult("release-plan");
               return `The release plan modified ${plan.modifiedFiles.length} files while being prepared.`;
             }, "release plan metadata")
           ]}
           output="rollout-guide"
         />
-      </Suspense>
+      </Parallel>
 
-      <Guarded
+      <Protect
         protectedFiles={["infra/production.tf", ".github/workflows/release.yml"]}
         validate={[
-          computed(async ({ readOutput }) => {
+          derive(async ({ readOutput }) => {
             const notes = (await readOutput("release-notes")).toLowerCase();
             const guide = (await readOutput("rollout-guide")).toLowerCase();
             return notes.includes("rollback") || guide.includes("rollback");
@@ -75,13 +75,13 @@ export default function ReleaseTrainWorkflow() {
           goal="Review the release package for production risk"
           agent="pi"
           context={[
-            useOutput("release-notes"),
-            useOutput("rollout-guide"),
+            output("release-notes"),
+            output("rollout-guide"),
             "Focus on deployment risk, observability gaps, and operator handoff quality."
           ]}
           constraints={["do not modify infra/production.tf"]}
         />
-      </Guarded>
-    </ErrorBoundary>
+      </Protect>
+    </Recover>
   );
 }

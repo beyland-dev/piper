@@ -23,7 +23,7 @@ That lives in the external command invoked by an adapter.
 ## Project layout
 
 1. `src/cli`: CLI entry point for compiling and running workflows
-2. `src/core`: task node types and helper components like `Task` and `Guarded`
+2. `src/core`: task node types and helper components like `Task` and `Protect`
 3. `src/runtime`: the executor and runtime checks
 4. `src/adapters`: bridges to external agents like `pi`
 5. `examples`: sample workflows
@@ -58,11 +58,11 @@ Output dependencies are explicit:
 
 ```tsx
 <Task goal="Create plan" agent="mock" output="plan" />
-<Task goal="Implement feature" agent="mock" context={[useOutput("plan")]} />
+<Task goal="Implement feature" agent="mock" context={[output("plan")]} />
 ```
 
 `output="plan"` publishes that task result.
-`useOutput("plan")` waits for it.
+`output("plan")` waits for it.
 If no task declares that output, or the producing task fails before publishing it, execution fails with a clear runtime error.
 
 ## Mental model

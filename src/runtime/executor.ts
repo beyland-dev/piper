@@ -1,6 +1,6 @@
 import { ROOT_CONSTRAINT_SCOPE, extendConstraintScope, protectedFileConstraint, type ConstraintScope } from "../core/constraint-context.js";
 import { normalizeTree } from "../core/node-utils.js";
-import { isSignal } from "../core/use-output.js";
+import { isSignal } from "../core/output.js";
 import type {
   AgentAdapter,
   ExecutionSummary,
@@ -198,13 +198,13 @@ function collectDeclaredOutputs(node: TaskNode): Map<string, number> {
         }
         return;
       case "sequence":
-      case "guarded":
-      case "error-boundary":
+      case "protect":
+      case "recover":
         for (const child of current.props.children) {
           visit(child);
         }
         return;
-      case "suspense":
+      case "parallel":
         for (const child of current.props.children) {
           visit(child);
         }
@@ -444,7 +444,7 @@ export class WorkflowExecutor {
     throw new Error(`Task "${node.props.goal}" exited its retry loop unexpectedly.`);
   }
 
-  private async executeSuspense(node: Extract<TaskNode, { kind: "suspense" }>, scope: ConstraintScope): Promise<void> {
+  private async executeParallel(node: Extract<TaskNode, { kind: "parallel" }>, scope: ConstraintScope): Promise<void> {
     if (typeof node.props.fallback === "string") {
       this.reporter.info(node.props.fallback);
     }
@@ -458,7 +458,7 @@ export class WorkflowExecutor {
     await Promise.all([childrenPromise, fallbackPromise]);
   }
 
-  private async executeErrorBoundary(node: Extract<TaskNode, { kind: "error-boundary" }>, scope: ConstraintScope): Promise<void> {
+  private async executeRecover(node: Extract<TaskNode, { kind: "recover" }>, scope: ConstraintScope): Promise<void> {
     const maxRetries = node.props.maxRetries ?? 3;
     let attempts = 0;
 
@@ -490,7 +490,7 @@ export class WorkflowExecutor {
     }
   }
 
-  private async executeGuarded(node: Extract<TaskNode, { kind: "guarded" }>, scope: ConstraintScope): Promise<void> {
+  private async executeProtect(node: Extract<TaskNode, { kind: "protect" }>, scope: ConstraintScope): Promise<void> {
     const childScope = extendConstraintScope(
       scope,
       node.props.protectedFiles.map((filePath) => protectedFileConstraint(filePath))
@@ -501,7 +501,7 @@ export class WorkflowExecutor {
     const failures = await runValidations(node.props.validate, this.createSignalRuntimeContext());
     if (failures.length > 0) {
       throw {
-        message: "Guarded validation failed.",
+        message: "Protect validation failed.",
         logs: failures.join("\n\n"),
         retryable: false
       } satisfies TaskError;
@@ -526,14 +526,14 @@ export class WorkflowExecutor {
       case "sequence":
         await this.executeSequence(node.props.children, scope);
         return;
-      case "suspense":
-        await this.executeSuspense(node, scope);
+      case "parallel":
+        await this.executeParallel(node, scope);
         return;
-      case "error-boundary":
-        await this.executeErrorBoundary(node, scope);
+      case "recover":
+        await this.executeRecover(node, scope);
         return;
-      case "guarded":
-        await this.executeGuarded(node, scope);
+      case "protect":
+        await this.executeProtect(node, scope);
         return;
       default:
         throw new Error(`Unsupported task node: ${(node as { kind?: string }).kind ?? "unknown"}`);
