@@ -17,12 +17,20 @@ describe("Recover", () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "agent-runtime-recover-"));
     directories.push(workspacePath);
 
+    // resolveBehavior tracks global starts so the second invocation of "Unstable task"
+    // (triggered by Recover's retry) succeeds even though each new handle starts at attempt 1.
+    let unstableStarts = 0;
     const adapter = new MockAdapter({
+      resolveBehavior: ({ goal }) => {
+        if (goal === "Unstable task") {
+          unstableStarts += 1;
+          return unstableStarts === 1
+            ? { failOnAttempt: 1, output: "Recovered result" }
+            : { output: "Recovered result" };
+        }
+        return undefined;
+      },
       behaviors: {
-        "Unstable task": {
-          failOnAttempt: 1,
-          output: "Recovered result"
-        },
         "Recovery task": {
           output: "Recovery complete"
         }
