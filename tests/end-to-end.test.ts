@@ -94,7 +94,7 @@ describe("CLI end-to-end", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout).toContain("[info] Dry run");
-    expect(stdout).toContain("task(agent=mock): Plan");
+    expect(stdout).toContain("Task(agent=mock): Plan");
   });
 
   it("prints the compiled workflow module", async () => {

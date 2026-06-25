@@ -32,7 +32,7 @@ describe("MockAdapter", () => {
       }
     });
 
-    const handle = adapter.starttask({
+    const handle = adapter.startTask({
       goal: "Write file",
       context: [],
       workspacePath

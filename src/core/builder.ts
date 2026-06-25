@@ -56,13 +56,13 @@ export function parallel(...children: TaskTree[]): ParallelNode;
 export function parallel(options: ParallelOptions, ...children: TaskTree[]): ParallelNode;
 export function parallel(first?: TaskTree | ParallelOptions, ...rest: TaskTree[]): ParallelNode {
   const { options, children } = splitOptions<ParallelOptions>(first, rest);
-  return Parallel({ ...options, children });
+  return Parallel({ ...options, children: normalizeChildren(children) });
 }
 
 export function protect(options: ProtectOptions, ...children: TaskTree[]): ProtectNode {
-  return Protect({ ...options, children });
+  return Protect({ ...options, children: normalizeChildren(children) });
 }
 
 export function recover(options: RecoverOptions, ...children: TaskTree[]): RecoverNode {
-  return Recover({ ...options, children });
+  return Recover({ ...options, children: normalizeChildren(children) });
 }
