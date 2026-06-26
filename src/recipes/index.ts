@@ -79,9 +79,10 @@ export function researchThenSynthesize(
 	options: RecipeOptions & { topics: string[] },
 ): RootLoopNode {
 	const harnessName = defaultHarness(options.harness);
-	const researchArtifacts = options.topics.map((topic) =>
-		artifact(`research-${topic}`, "research"),
-	);
+	const researchBranches = options.topics.map((topic) => ({
+		topic,
+		output: artifact(`research-${topic}`, "research"),
+	}));
 	const synthesis = artifact("synthesis", "summary");
 
 	return loop(
@@ -94,18 +95,18 @@ export function researchThenSynthesize(
 		},
 		parallel(
 			{ status: "Running parallel research branches..." },
-			...options.topics.map((topic, index) =>
+			...researchBranches.map(({ topic, output }) =>
 				step({
 					role: "researcher",
 					goal: `Research ${topic} for: ${options.objective}`,
-					produces: researchArtifacts[index],
+					produces: output,
 				}),
 			),
 		),
 		step({
 			role: "synthesizer",
 			goal: `Synthesize research for: ${options.objective}`,
-			context: researchArtifacts,
+			context: researchBranches.map((branch) => branch.output),
 			produces: synthesis,
 			validate: options.validate,
 		}),
@@ -146,9 +147,10 @@ export function parallelInvestigateThenDecide(
 	options: RecipeOptions & { options: string[] },
 ): RootLoopNode {
 	const harnessName = defaultHarness(options.harness);
-	const investigations = options.options.map((name) =>
-		artifact(`investigation-${name}`, "research"),
-	);
+	const investigations = options.options.map((name) => ({
+		name,
+		output: artifact(`investigation-${name}`, "research"),
+	}));
 	const decision = artifact("decision", "decision");
 
 	return loop(
@@ -160,18 +162,18 @@ export function parallelInvestigateThenDecide(
 			],
 		},
 		parallel(
-			...options.options.map((name, index) =>
+			...investigations.map(({ name, output }) =>
 				step({
 					role: "investigator",
 					goal: `Investigate option ${name} for: ${options.objective}`,
-					produces: investigations[index],
+					produces: output,
 				}),
 			),
 		),
 		step({
 			role: "decider",
 			goal: `Compare investigations and choose a path for: ${options.objective}`,
-			context: investigations,
+			context: investigations.map((investigation) => investigation.output),
 			produces: decision,
 			validate: options.validate,
 		}),

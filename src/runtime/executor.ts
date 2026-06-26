@@ -231,7 +231,7 @@ function collectArtifactDeclarations(node: ConcreteLoopNode): string[] {
 	return names;
 }
 
-function toTaskError(error: unknown, fallbackMessage = "Step failed"): TaskError {
+function toStepError(error: unknown, fallbackMessage = "Step failed"): TaskError {
 	if (typeof error === "object" && error !== null && "message" in error && "retryable" in error) {
 		return error as TaskError;
 	}
@@ -708,7 +708,7 @@ export class PiperOrchestrator {
 					throw rawError;
 				}
 
-				const error = toTaskError(rawError);
+				const error = toStepError(rawError);
 				const constraintFailures = await enforceProtectedFiles({
 					workspacePath: this.workspacePath,
 					snapshot,
@@ -893,7 +893,7 @@ export class PiperOrchestrator {
 				}
 
 				latestFailures =
-					error instanceof EvaluationFailure ? error.feedback : [toTaskError(error).message];
+					error instanceof EvaluationFailure ? error.feedback : [toStepError(error).message];
 
 				if (node.props.onFailure && attempt < maxAttempts) {
 					let retryRequested = false;
@@ -901,7 +901,7 @@ export class PiperOrchestrator {
 						retryRequested = true;
 					};
 					await this.executeNode(
-						normalizeTree(node.props.onFailure(toTaskError(error), retry)),
+						normalizeTree(node.props.onFailure(toStepError(error), retry)),
 						scope,
 					);
 					if (retryRequested) {
