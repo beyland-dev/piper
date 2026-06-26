@@ -11,15 +11,15 @@ import {
 import type {
 	HarnessAdapter,
 	ProgressUpdate,
-	TaskError,
-	TaskHandle,
-	TaskResult,
+	StepError,
+	StepHandle,
+	StepResult,
 } from "../core/types.js";
 import { listModifiedFiles } from "../runtime/constraint-checker.js";
 import { AsyncQueue } from "../utils/async-queue.js";
 import { createDeferred } from "../utils/deferred.js";
 import { defaultPrompt } from "./command-adapter.js";
-import { ManagedTaskHandle } from "./task-handle.js";
+import { ManagedStepHandle } from "./step-handle.js";
 
 const DEFAULT_COPILOT_AHP_PROVIDER = "copilotcli";
 
@@ -42,7 +42,7 @@ export interface CopilotAhpHarnessOptions {
 	}) => Promise<AhpClient>;
 }
 
-interface CopilotAhpTaskState {
+interface CopilotAhpStepState {
 	goal: string;
 	model?: string;
 	context: string[];
@@ -55,7 +55,7 @@ export class CopilotAhpHarness implements HarnessAdapter {
 
 	private readonly options: Required<Pick<CopilotAhpHarnessOptions, "provider" | "tokenProvider">> &
 		Omit<CopilotAhpHarnessOptions, "name" | "provider" | "tokenProvider">;
-	private readonly state = new WeakMap<ManagedTaskHandle, CopilotAhpTaskState>();
+	private readonly state = new WeakMap<ManagedStepHandle, CopilotAhpStepState>();
 
 	constructor(options: CopilotAhpHarnessOptions = {}) {
 		const {
@@ -68,13 +68,13 @@ export class CopilotAhpHarness implements HarnessAdapter {
 		this.options = { provider, tokenProvider, ...rest };
 	}
 
-	startTask(params: {
+	startStep(params: {
 		goal: string;
 		model?: string;
 		context: string[];
 		workspacePath: string;
-	}): TaskHandle {
-		const handle = new ManagedTaskHandle();
+	}): StepHandle {
+		const handle = new ManagedStepHandle();
 		this.state.set(handle, {
 			...params,
 			attempt: 0,
@@ -83,25 +83,25 @@ export class CopilotAhpHarness implements HarnessAdapter {
 		return handle;
 	}
 
-	retry(taskHandle: TaskHandle, failures: string[]): void {
-		this.runAttempt(taskHandle as ManagedTaskHandle, failures);
+	retry(stepHandle: StepHandle, failures: string[]): void {
+		this.runAttempt(stepHandle as ManagedStepHandle, failures);
 	}
 
-	cancel(taskHandle: TaskHandle): void {
-		(taskHandle as ManagedTaskHandle).cancel();
+	cancel(stepHandle: StepHandle): void {
+		(stepHandle as ManagedStepHandle).cancel();
 	}
 
-	private runAttempt(handle: ManagedTaskHandle, failures: string[]): void {
+	private runAttempt(handle: ManagedStepHandle, failures: string[]): void {
 		const state = this.state.get(handle);
 		if (!state) {
-			throw new Error("Unknown Copilot AHP task handle");
+			throw new Error("Unknown Copilot AHP step handle");
 		}
 
 		state.attempt += 1;
 		const attempt = state.attempt;
 		const progress = new AsyncQueue<ProgressUpdate>();
-		const completed = createDeferred<TaskResult>();
-		const errored = createDeferred<TaskError>();
+		const completed = createDeferred<StepResult>();
+		const errored = createDeferred<StepError>();
 		let canceled = false;
 		let client: AhpClient | undefined;
 		let turnChannel: string | undefined;
@@ -135,7 +135,7 @@ export class CopilotAhpHarness implements HarnessAdapter {
 				const baseline = new Set(await listModifiedFiles(state.workspacePath));
 				if (canceled) {
 					progress.close();
-					errored.resolve({ message: "copilot AHP task canceled", retryable: false });
+					errored.resolve({ message: "copilot AHP step canceled", retryable: false });
 					return;
 				}
 
@@ -174,7 +174,7 @@ export class CopilotAhpHarness implements HarnessAdapter {
 
 				if (canceled) {
 					errored.resolve({
-						message: "copilot AHP task canceled",
+						message: "copilot AHP step canceled",
 						logs: output,
 						modifiedFiles,
 						retryable: false,
@@ -195,7 +195,7 @@ export class CopilotAhpHarness implements HarnessAdapter {
 			} catch (error) {
 				progress.close();
 				errored.resolve({
-					message: error instanceof Error ? error.message : "copilot AHP task failed unexpectedly",
+					message: error instanceof Error ? error.message : "copilot AHP step failed unexpectedly",
 					logs: error instanceof Error ? error.stack : String(error),
 					retryable: !canceled,
 				});

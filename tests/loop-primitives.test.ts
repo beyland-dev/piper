@@ -68,7 +68,7 @@ describe("loop primitives", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 

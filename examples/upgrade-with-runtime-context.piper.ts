@@ -6,7 +6,7 @@ const plan = artifact("runtime-aware-upgrade-plan", "plan");
 export default function upgradeWithRuntimeContextLoop() {
 	return loop(
 		{
-			objective: "Plan an upgrade using runtime artifact and task metadata",
+			objective: "Plan an upgrade using runtime artifact and step metadata",
 			agents: [
 				agent("upgrade planner", {
 					harness: "copilot",
@@ -24,8 +24,8 @@ export default function upgradeWithRuntimeContextLoop() {
 			goal: "Create an upgrade plan that reflects the inventory and modified-file metadata.",
 			context: [
 				inventory.value(),
-				runtimeValue(async ({ readTaskResult }) => {
-					const result = await readTaskResult("upgrade-inventory");
+				runtimeValue(async ({ readStepResult }) => {
+					const result = await readStepResult("upgrade-inventory");
 					return `Inventory step modified ${result.modifiedFiles.length} files: ${
 						result.modifiedFiles.join(", ") || "none"
 					}`;

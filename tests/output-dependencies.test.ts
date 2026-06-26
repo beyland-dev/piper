@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MockHarness, PiperOrchestrator, artifact, parallel, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, artifact, parallel, step } from "../src/index.js";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 200): Promise<T> {
 	return Promise.race([
@@ -29,14 +29,14 @@ describe("artifact dependencies", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [new MockHarness()],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
 		await expect(
 			withTimeout(
 				executor.execute(
-					task({
+					step({
 						goal: "Implement feature",
 						harness: "mock",
 						context: [artifact("missing").value()],
@@ -56,14 +56,14 @@ describe("artifact dependencies", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [new MockHarness()],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
 		await expect(
 			withTimeout(
 				executor.execute(
-					task({
+					step({
 						goal: "Implement feature",
 						harness: "mock",
 						context: [artifact("missing").value()],
@@ -82,20 +82,20 @@ describe("artifact dependencies", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
 		const summary = await executor.execute([
-			task({ goal: "Create first plan", harness: "mock", artifact: "plan" }),
-			task({ goal: "Create second plan", harness: "mock", artifact: "plan" }),
+			step({ goal: "Create first plan", harness: "mock", produces: "plan" }),
+			step({ goal: "Create second plan", harness: "mock", produces: "plan" }),
 		]);
 
 		expect(summary.artifacts.plan).toBe("Mock completed: Create second plan");
 		expect(adapter.history).toHaveLength(2);
 	});
 
-	it("rejects waiting artifact consumers when the producer task fails", async () => {
+	it("rejects waiting artifact consumers when the producer step fails", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-deps-"));
 		directories.push(workspacePath);
 
@@ -105,7 +105,7 @@ describe("artifact dependencies", () => {
 					return {
 						failOnAttempt: 1,
 						retryable: false,
-						errorMessage: "Plan task failed",
+						errorMessage: "Plan step failed",
 					};
 				}
 
@@ -122,7 +122,7 @@ describe("artifact dependencies", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
@@ -130,8 +130,8 @@ describe("artifact dependencies", () => {
 			withTimeout(
 				executor.execute(
 					parallel(
-						task({ goal: "Create plan", harness: "mock", artifact: "plan" }),
-						task({
+						step({ goal: "Create plan", harness: "mock", produces: "plan" }),
+						step({
 							goal: "Implement feature",
 							harness: "mock",
 							context: [artifact("plan").value()],
@@ -140,7 +140,7 @@ describe("artifact dependencies", () => {
 				),
 				200,
 			),
-		).rejects.toThrow("Plan task failed");
+		).rejects.toThrow("Plan step failed");
 
 		const artifacts = (
 			executor as unknown as {

@@ -3,7 +3,7 @@ import type {
 	MaybePromise,
 	RuntimeValue,
 	RuntimeValueContext,
-	TaskResult,
+	StepResult,
 } from "./types.js";
 
 const RUNTIME_VALUE_MARKER = Symbol.for("piper.runtime-value");
@@ -71,9 +71,9 @@ export function artifact<Name extends string, Type extends string>(
 		(context) => context.readArtifact(name),
 		[name],
 	);
-	const result = createRuntimeValue<TaskResult>(
+	const result = createRuntimeValue<StepResult>(
 		`artifact result(${name})`,
-		(context) => context.readTaskResult(name),
+		(context) => context.readStepResult(name),
 		[name],
 	);
 

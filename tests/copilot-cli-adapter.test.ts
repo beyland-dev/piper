@@ -13,7 +13,7 @@ describe("CopilotCliHarness", () => {
 		);
 	});
 
-	it("runs a configured Copilot CLI command with task environment", async () => {
+	it("runs a configured Copilot CLI command with step environment", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
 		directories.push(workspacePath);
 
@@ -22,7 +22,7 @@ describe("CopilotCliHarness", () => {
 				'node -e "console.log(process.env.COPILOT_GOAL); console.log(process.env.COPILOT_CONTEXT); console.log(process.env.AGENT_WORKSPACE)"',
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Create a plan",
 			context: ["Use tests"],
 			workspacePath,
@@ -47,7 +47,7 @@ describe("CopilotCliHarness", () => {
 			command: commandPath,
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Create a plan",
 			context: ["Use tests"],
 			workspacePath,
@@ -58,7 +58,7 @@ describe("CopilotCliHarness", () => {
 		});
 	});
 
-	it("passes model selection through templates and task environment", async () => {
+	it("passes model selection through templates and step environment", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
 		directories.push(workspacePath);
 
@@ -67,7 +67,7 @@ describe("CopilotCliHarness", () => {
 				'node -e "console.log(process.env.COPILOT_MODEL); console.log(process.env.AGENT_MODEL); console.log({model})"',
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Create a plan",
 			model: "gpt-5.4",
 			context: [],
@@ -88,7 +88,7 @@ describe("CopilotCliHarness", () => {
 				"node -e \"if (process.env.AGENT_ATTEMPT === '1') { console.error('needs retry'); process.exit(1); } console.log(process.env.COPILOT_RETRY_REASON)\"",
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Create a plan",
 			context: [],
 			workspacePath,
@@ -106,7 +106,7 @@ describe("CopilotCliHarness", () => {
 		});
 	});
 
-	it("passes constraints and protected files through templates and task environment", async () => {
+	it("passes constraints and protected files through templates and step environment", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-copilot-"));
 		directories.push(workspacePath);
 
@@ -115,7 +115,7 @@ describe("CopilotCliHarness", () => {
 				'node -e "console.log(process.env.COPILOT_CONSTRAINTS); console.log(process.env.COPILOT_PROTECTED_FILES); console.log(process.env.AGENT_CONSTRAINTS); console.log(process.env.AGENT_PROTECTED_FILES); console.log({constraints}); console.log({protectedFiles})"',
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Create a plan",
 			context: [],
 			constraints: ["do not modify secret.ts"],

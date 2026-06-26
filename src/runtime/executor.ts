@@ -23,10 +23,10 @@ import type {
 	RuntimeHooks,
 	RuntimeValueContext,
 	StepAttemptInfo,
-	TaskError,
-	TaskHandle,
-	TaskResult,
-	TaskTree,
+	StepError,
+	StepHandle,
+	StepResult,
+	LoopTree,
 } from "../core/types.js";
 import { runCommand } from "../utils/process.js";
 import { captureGitSnapshot, enforceProtectedFiles } from "./constraint-checker.js";
@@ -55,7 +55,7 @@ type CancellationState = {
 	resolve: (error: PiperCancellationError) => void;
 };
 
-type ActiveTask = {
+type ActiveStep = {
 	harness: HarnessAdapter;
 };
 
@@ -73,9 +73,9 @@ function createCancellationState(): CancellationState {
 }
 
 class OutputStore {
-	private readonly artifacts = new Map<string, TaskResult>();
+	private readonly artifacts = new Map<string, StepResult>();
 	private readonly outputWaiters = new Map<string, Waiter<string>[]>();
-	private readonly resultWaiters = new Map<string, Waiter<TaskResult>[]>();
+	private readonly resultWaiters = new Map<string, Waiter<StepResult>[]>();
 	private readonly declaredOutputs = new Set<string>();
 	private readonly failures = new Map<string, Error>();
 
@@ -89,7 +89,7 @@ class OutputStore {
 		}
 	}
 
-	set(name: string, result: TaskResult): void {
+	set(name: string, result: StepResult): void {
 		this.declaredOutputs.add(name);
 		this.artifacts.set(name, result);
 		this.failures.delete(name);
@@ -151,7 +151,7 @@ class OutputStore {
 		});
 	}
 
-	async waitForResult(name: string): Promise<TaskResult> {
+	async waitForResult(name: string): Promise<StepResult> {
 		const existing = this.artifacts.get(name);
 		if (existing) {
 			return existing;
@@ -168,7 +168,7 @@ class OutputStore {
 			);
 		}
 
-		return new Promise<TaskResult>((resolve, reject) => {
+		return new Promise<StepResult>((resolve, reject) => {
 			const waiters = this.resultWaiters.get(name) ?? [];
 			waiters.push({ resolve, reject });
 			this.resultWaiters.set(name, waiters);
@@ -181,7 +181,7 @@ class OutputStore {
 		);
 	}
 
-	snapshotResults(): Record<string, TaskResult> {
+	snapshotResults(): Record<string, StepResult> {
 		return Object.fromEntries(this.artifacts.entries());
 	}
 
@@ -235,9 +235,9 @@ function collectArtifactDeclarations(node: ConcreteLoopNode): string[] {
 	return names;
 }
 
-function toStepError(error: unknown, fallbackMessage = "Step failed"): TaskError {
+function toStepError(error: unknown, fallbackMessage = "Step failed"): StepError {
 	if (typeof error === "object" && error !== null && "message" in error && "retryable" in error) {
-		return error as TaskError;
+		return error as StepError;
 	}
 
 	if (error instanceof Error) {
@@ -265,19 +265,8 @@ function attemptLabel(count: number): string {
 	return `${count} ${count === 1 ? "attempt" : "attempts"}`;
 }
 
-function getStepArtifactTarget(props: {
-	produces?: ArtifactTarget;
-	artifact?: ArtifactTarget;
-}): ArtifactTarget | undefined {
-	return props.produces ?? props.artifact;
-}
-
-function getStepArtifactName(props: {
-	produces?: ArtifactTarget;
-	artifact?: ArtifactTarget;
-}): string | undefined {
-	const target = getStepArtifactTarget(props);
-	return target ? getArtifactName(target) : undefined;
+function getStepArtifactName(props: { produces?: ArtifactTarget }): string | undefined {
+	return props.produces ? getArtifactName(props.produces) : undefined;
 }
 
 class EvaluationFailure extends Error {
@@ -320,7 +309,7 @@ class OutputPersistence {
 	}
 
 	async write(params: {
-		artifacts: Record<string, TaskResult>;
+		artifacts: Record<string, StepResult>;
 		feedback: FeedbackRecord[];
 		events: unknown[];
 		summary?: Omit<ExecutionSummary, "artifacts" | "feedback" | "events">;
@@ -348,7 +337,7 @@ export class PiperOrchestrator {
 	private readonly hooks: RuntimeHooks;
 	private readonly retryLimit: number;
 	private readonly outputPersistence: OutputPersistence | null;
-	private readonly activeTasks = new Map<TaskHandle, ActiveTask>();
+	private readonly activeSteps = new Map<StepHandle, ActiveStep>();
 	private artifacts = new OutputStore();
 	private cancellationState = createCancellationState();
 	private readonly workspacePath: string;
@@ -369,7 +358,7 @@ export class PiperOrchestrator {
 		}
 
 		this.hooks = options.hooks ?? new NullHooks();
-		this.retryLimit = options.stepRetryLimit ?? options.taskRetryLimit ?? 3;
+		this.retryLimit = options.stepRetryLimit ?? 3;
 		this.workspacePath = options.workspacePath;
 		this.outputPersistence =
 			options.artifactStorage === false
@@ -377,7 +366,7 @@ export class PiperOrchestrator {
 				: new OutputPersistence(options.workspacePath, options.artifactStorage);
 	}
 
-	async execute(tree: TaskTree): Promise<ExecutionSummary> {
+	async execute(tree: LoopTree): Promise<ExecutionSummary> {
 		if (!this.cancellationState.error) {
 			this.cancellationState = createCancellationState();
 		}
@@ -427,9 +416,9 @@ export class PiperOrchestrator {
 		this.artifacts.closePending(error);
 
 		const cancelErrors: unknown[] = [];
-		for (const [handle, activeTask] of this.activeTasks) {
+		for (const [handle, activeStep] of this.activeSteps) {
 			try {
-				activeTask.harness.cancel(handle);
+				activeStep.harness.cancel(handle);
 			} catch (cancelError) {
 				cancelErrors.push(cancelError);
 			}
@@ -446,8 +435,6 @@ export class PiperOrchestrator {
 		return {
 			completedSteps: this.completedSteps,
 			failedSteps: this.failedSteps,
-			completedTasks: this.completedSteps,
-			failedTasks: this.failedSteps,
 			artifacts: this.artifacts.snapshot(),
 			feedback: [...this.feedback],
 			events: [...this.events],
@@ -465,8 +452,6 @@ export class PiperOrchestrator {
 				? {
 						completedSteps: summary.completedSteps,
 						failedSteps: summary.failedSteps,
-						completedTasks: summary.completedTasks,
-						failedTasks: summary.failedTasks,
 						runId: summary.runId,
 						artifactPath: summary.artifactPath,
 					}
@@ -500,7 +485,7 @@ export class PiperOrchestrator {
 		return {
 			workspacePath: this.workspacePath,
 			readArtifact: (name) => this.artifacts.waitForOutput(name),
-			readTaskResult: (name) => this.artifacts.waitForResult(name),
+			readStepResult: (name) => this.artifacts.waitForResult(name),
 			readState: <T = unknown>(name: string) => this.state.get(name) as T | undefined,
 			readFeedback: (scope) =>
 				scope ? this.feedback.filter((record) => record.scope === scope) : [...this.feedback],
@@ -601,8 +586,8 @@ export class PiperOrchestrator {
 		return failures;
 	}
 
-	private async observeAttempt(handle: TaskHandle, info: StepAttemptInfo): Promise<TaskResult> {
-		const progressTask = (async () => {
+	private async observeAttempt(handle: StepHandle, info: StepAttemptInfo): Promise<StepResult> {
+		const progressStep = (async () => {
 			for await (const update of handle.progress) {
 				this.hooks.stepProgress(info, update);
 			}
@@ -618,7 +603,7 @@ export class PiperOrchestrator {
 			throw outcome.error;
 		}
 
-		await progressTask;
+		await progressStep;
 
 		if (outcome.kind === "errored") {
 			throw outcome.error;
@@ -627,15 +612,15 @@ export class PiperOrchestrator {
 		return outcome.result;
 	}
 
-	private registerActiveTask(handle: TaskHandle, harness: HarnessAdapter): () => void {
+	private registerActiveStep(handle: StepHandle, harness: HarnessAdapter): () => void {
 		if (this.cancellationState.error) {
 			harness.cancel(handle);
 			throw this.cancellationState.error;
 		}
 
-		this.activeTasks.set(handle, { harness });
+		this.activeSteps.set(handle, { harness });
 		return () => {
-			this.activeTasks.delete(handle);
+			this.activeSteps.delete(handle);
 		};
 	}
 
@@ -670,7 +655,7 @@ export class PiperOrchestrator {
 			...(node.props.constraints ?? []),
 		]);
 		const maxAttempts = this.retryLimit + 1;
-		let taskHandle: TaskHandle | undefined;
+		let stepHandle: StepHandle | undefined;
 		let failures: string[] = [];
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -710,7 +695,7 @@ export class PiperOrchestrator {
 			]);
 
 			if (attempt === 1) {
-				taskHandle = harness.startTask({
+				stepHandle = harness.startStep({
 					goal: node.props.goal,
 					model,
 					context: resolvedContext,
@@ -719,14 +704,14 @@ export class PiperOrchestrator {
 					workspacePath: this.workspacePath,
 				});
 			} else {
-				harness.retry(taskHandle as TaskHandle, failures);
+				harness.retry(stepHandle as StepHandle, failures);
 			}
 
-			let result: TaskResult;
-			let unregisterActiveTask: (() => void) | undefined;
+			let result: StepResult;
+			let unregisterActiveStep: (() => void) | undefined;
 			try {
-				unregisterActiveTask = this.registerActiveTask(taskHandle as TaskHandle, harness);
-				result = await this.observeAttempt(taskHandle as TaskHandle, info);
+				unregisterActiveStep = this.registerActiveStep(stepHandle as StepHandle, harness);
+				result = await this.observeAttempt(stepHandle as StepHandle, info);
 			} catch (rawError) {
 				if (isPiperCancellationError(rawError)) {
 					throw rawError;
@@ -763,7 +748,6 @@ export class PiperOrchestrator {
 				this.failedSteps += 1;
 				this.hooks.stepFailed(info, error);
 				node.props.onError?.(error);
-				node.props["on:error"]?.(error);
 				this.recordEvent({
 					type: "step:fail",
 					message: error.message,
@@ -772,7 +756,7 @@ export class PiperOrchestrator {
 				});
 				throw error;
 			} finally {
-				unregisterActiveTask?.();
+				unregisterActiveStep?.();
 			}
 
 			this.throwIfCancelled();
@@ -798,7 +782,7 @@ export class PiperOrchestrator {
 					continue;
 				}
 
-				const error: TaskError = {
+				const error: StepError = {
 					message: `Step failed after ${attemptLabel(attempt)}.`,
 					logs: allFailures.join("\n\n"),
 					modifiedFiles: result.modifiedFiles,
@@ -815,7 +799,6 @@ export class PiperOrchestrator {
 				this.failedSteps += 1;
 				this.hooks.stepFailed(info, error);
 				node.props.onError?.(error);
-				node.props["on:error"]?.(error);
 				this.recordEvent({
 					type: "step:fail",
 					message: error.message,
@@ -834,7 +817,6 @@ export class PiperOrchestrator {
 			this.completedSteps += 1;
 			this.hooks.stepCompleted(info, result);
 			node.props.onComplete?.(result);
-			node.props["on:complete"]?.(result);
 			this.recordEvent({
 				type: "step:complete",
 				message: node.props.goal,
@@ -888,7 +870,7 @@ export class PiperOrchestrator {
 		node: Extract<ConcreteLoopNode, { kind: "repeat" }>,
 		scope: ConstraintScope,
 	): Promise<void> {
-		const maxAttempts = node.props.maxAttempts ?? (node.props.maxRetries ?? 2) + 1;
+		const maxAttempts = node.props.maxAttempts ?? 3;
 		this.recordEvent({
 			type: "repeat:start",
 			message: `Repeat ${node.props.id ?? "loop"}`,
@@ -958,7 +940,7 @@ export class PiperOrchestrator {
 			message: `Repeat loop exhausted ${attemptLabel(maxAttempts)}.`,
 			logs: latestFailures.join("\n\n"),
 			retryable: false,
-		} satisfies TaskError;
+		} satisfies StepError;
 	}
 
 	private async executeParallel(

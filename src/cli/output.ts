@@ -6,7 +6,7 @@ import type {
 	RuntimeHooks,
 	RunEvent,
 	StepAttemptInfo,
-	TaskResult,
+	StepResult,
 } from "../core/types.js";
 
 function clip(value: string, limit = 100): string {
@@ -98,7 +98,7 @@ export class CliReporter implements RuntimeHooks {
 		);
 	}
 
-	stepCompleted(info: StepAttemptInfo, _result: TaskResult): void {
+	stepCompleted(info: StepAttemptInfo, _result: StepResult): void {
 		this.closeProgressBlock(info);
 		this.writer.write(
 			`${this.status("done", "green")} Successfully completed ${this.format(info.id, "bold")}\n`,
@@ -110,26 +110,6 @@ export class CliReporter implements RuntimeHooks {
 		this.errorWriter.write(
 			`${this.status("fail", "red", true)} ${this.format(info.id, "bold", true)} ${error.message}\n`,
 		);
-	}
-
-	taskStarted(info: StepAttemptInfo): void {
-		this.stepStarted(info);
-	}
-
-	taskProgress(info: StepAttemptInfo, update: ProgressUpdate): void {
-		this.stepProgress(info, update);
-	}
-
-	taskRetry(info: StepAttemptInfo, failures: string[]): void {
-		this.stepRetry(info, failures);
-	}
-
-	taskCompleted(info: StepAttemptInfo, result: TaskResult): void {
-		this.stepCompleted(info, result);
-	}
-
-	taskFailed(info: StepAttemptInfo, error: { message: string }): void {
-		this.stepFailed(info, error);
 	}
 
 	event(event: RunEvent): void {
@@ -188,9 +168,7 @@ function describeNode(node: ConcreteLoopNode, depth: number): string[] {
 						? `role=${typeof node.props.role === "string" ? node.props.role : node.props.role.name}`
 						: undefined,
 					node.props.harness ? `harness=${node.props.harness}` : undefined,
-					(node.props.produces ?? node.props.artifact)
-						? `artifact=${getArtifactName((node.props.produces ?? node.props.artifact)!)}`
-						: undefined,
+					node.props.produces ? `artifact=${getArtifactName(node.props.produces)}` : undefined,
 				]
 					.filter(Boolean)
 					.join(", ")}): ${node.props.goal}`,
@@ -229,6 +207,6 @@ function describeNode(node: ConcreteLoopNode, depth: number): string[] {
 	}
 }
 
-export function formatTaskTree(node: ConcreteLoopNode): string {
+export function formatLoopTree(node: ConcreteLoopNode): string {
 	return describeNode(node, 0).join("\n");
 }

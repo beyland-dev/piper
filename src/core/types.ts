@@ -7,37 +7,37 @@ export interface ProgressUpdate {
 	timestamp: number;
 }
 
-export interface TaskResult {
+export interface StepResult {
 	output: string;
 	modifiedFiles: string[];
 	metadata?: Record<string, unknown>;
 }
 
-export interface TaskError {
+export interface StepError {
 	message: string;
 	logs?: string;
 	modifiedFiles?: string[];
 	retryable: boolean;
 }
 
-export interface TaskHandle {
+export interface StepHandle {
 	readonly progress: AsyncIterable<ProgressUpdate>;
-	readonly completed: Promise<TaskResult>;
-	readonly errored: Promise<TaskError>;
+	readonly completed: Promise<StepResult>;
+	readonly errored: Promise<StepError>;
 }
 
 export interface HarnessAdapter {
 	name: string;
-	startTask(params: {
+	startStep(params: {
 		goal: string;
 		model?: string;
 		context: string[];
 		constraints: string[];
 		protectedFiles: string[];
 		workspacePath: string;
-	}): TaskHandle;
-	retry(taskHandle: TaskHandle, failures: string[]): void;
-	cancel(taskHandle: TaskHandle): void;
+	}): StepHandle;
+	retry(stepHandle: StepHandle, failures: string[]): void;
+	cancel(stepHandle: StepHandle): void;
 }
 
 export interface AgentDefinition<Name extends string = string> {
@@ -60,7 +60,7 @@ export interface HarnessDefinition<Name extends string = string> {
 export interface RuntimeValueContext {
 	workspacePath: string;
 	readArtifact(name: string): Promise<string>;
-	readTaskResult(name: string): Promise<TaskResult>;
+	readStepResult(name: string): Promise<StepResult>;
 	readState<T = unknown>(name: string): T | undefined;
 	readFeedback(scope?: string): FeedbackRecord[];
 }
@@ -77,7 +77,7 @@ export interface Artifact<Name extends string = string, Type extends string = st
 	readonly name: Name;
 	readonly type: Type;
 	value(): RuntimeValue<string>;
-	result(): RuntimeValue<TaskResult>;
+	result(): RuntimeValue<StepResult>;
 }
 
 export type ArtifactTarget = string | Artifact;
@@ -154,12 +154,9 @@ export interface StepProps {
 	acceptanceCriteria?: string[];
 	constraints?: string[];
 	produces?: ArtifactTarget;
-	artifact?: ArtifactTarget;
 	validate?: EvaluationValue[];
-	onComplete?: (result: TaskResult) => void;
-	onError?: (error: TaskError) => void;
-	"on:complete"?: (result: TaskResult) => void;
-	"on:error"?: (error: TaskError) => void;
+	onComplete?: (result: StepResult) => void;
+	onError?: (error: StepError) => void;
 }
 
 export interface EvaluateProps {
@@ -173,8 +170,7 @@ export interface EvaluateProps {
 export interface RepeatProps {
 	id?: string;
 	maxAttempts?: number;
-	maxRetries?: number;
-	onFailure?: (error: TaskError, retry: () => void) => LoopTree;
+	onFailure?: (error: StepError, retry: () => void) => LoopTree;
 	until?: EvaluationValue[];
 	children?: LoopTree;
 }
@@ -261,8 +257,6 @@ export type ConcreteLoopNode =
 
 export type LoopNode = ConcreteLoopNode;
 export type LoopTree = ConcreteLoopNode | LoopTree[] | null | undefined | false;
-export type TaskNode = LoopTree;
-export type TaskTree = LoopTree;
 
 export interface StepAttemptInfo {
 	id: string;
@@ -273,13 +267,9 @@ export interface StepAttemptInfo {
 	attempt: number;
 }
 
-export type TaskAttemptInfo = StepAttemptInfo;
-
 export interface ExecutionSummary {
 	completedSteps: number;
 	failedSteps: number;
-	completedTasks: number;
-	failedTasks: number;
 	artifacts: Record<string, string>;
 	feedback: FeedbackRecord[];
 	events: RunEvent[];
@@ -292,15 +282,10 @@ export interface RuntimeHooks {
 	stepStarted(info: StepAttemptInfo): void;
 	stepProgress(info: StepAttemptInfo, update: ProgressUpdate): void;
 	stepRetry(info: StepAttemptInfo, failures: string[]): void;
-	stepCompleted(info: StepAttemptInfo, result: TaskResult): void;
-	stepFailed(info: StepAttemptInfo, error: TaskError): void;
+	stepCompleted(info: StepAttemptInfo, result: StepResult): void;
+	stepFailed(info: StepAttemptInfo, error: StepError): void;
 	event(event: RunEvent): void;
 	summary(summary: ExecutionSummary): void;
-	taskStarted?(info: StepAttemptInfo): void;
-	taskProgress?(info: StepAttemptInfo, update: ProgressUpdate): void;
-	taskRetry?(info: StepAttemptInfo, failures: string[]): void;
-	taskCompleted?(info: StepAttemptInfo, result: TaskResult): void;
-	taskFailed?(info: StepAttemptInfo, error: TaskError): void;
 }
 
 export interface ArtifactStorageOptions {
@@ -313,6 +298,5 @@ export interface ExecutorOptions {
 	harnesses: HarnessAdapter[];
 	hooks?: RuntimeHooks;
 	stepRetryLimit?: number;
-	taskRetryLimit?: number;
 	artifactStorage?: ArtifactStorageOptions | false;
 }

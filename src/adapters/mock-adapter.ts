@@ -3,13 +3,13 @@ import { dirname, resolve } from "node:path";
 import type {
 	HarnessAdapter,
 	ProgressUpdate,
-	TaskError,
-	TaskHandle,
-	TaskResult,
+	StepError,
+	StepHandle,
+	StepResult,
 } from "../core/types.js";
 import { AsyncQueue } from "../utils/async-queue.js";
 import { createDeferred } from "../utils/deferred.js";
-import { ManagedTaskHandle } from "./task-handle.js";
+import { ManagedStepHandle } from "./step-handle.js";
 
 export interface MockBehavior {
 	delayMs?: number;
@@ -47,7 +47,7 @@ export interface MockHarnessOptions {
 	}) => MockBehavior | undefined;
 }
 
-interface MockTaskState {
+interface MockStepState {
 	goal: string;
 	model?: string;
 	context: string[];
@@ -74,22 +74,22 @@ export class MockHarness implements HarnessAdapter {
 	readonly history: MockAttemptRecord[] = [];
 
 	private readonly options: MockHarnessOptions;
-	private readonly state = new WeakMap<ManagedTaskHandle, MockTaskState>();
+	private readonly state = new WeakMap<ManagedStepHandle, MockStepState>();
 
 	constructor(options: MockHarnessOptions = {}) {
 		this.options = options;
 	}
 
-	startTask(params: {
+	startStep(params: {
 		goal: string;
 		model?: string;
 		context: string[];
 		constraints?: string[];
 		protectedFiles?: string[];
 		workspacePath: string;
-	}): TaskHandle {
-		const handle = new ManagedTaskHandle();
-		const state: MockTaskState = {
+	}): StepHandle {
+		const handle = new ManagedStepHandle();
+		const state: MockStepState = {
 			...params,
 			constraints: params.constraints ?? [],
 			protectedFiles: params.protectedFiles ?? [],
@@ -101,15 +101,15 @@ export class MockHarness implements HarnessAdapter {
 		return handle;
 	}
 
-	retry(taskHandle: TaskHandle, failures: string[]): void {
-		this.runAttempt(taskHandle as ManagedTaskHandle, failures);
+	retry(stepHandle: StepHandle, failures: string[]): void {
+		this.runAttempt(stepHandle as ManagedStepHandle, failures);
 	}
 
-	cancel(taskHandle: TaskHandle): void {
-		(taskHandle as ManagedTaskHandle).cancel();
+	cancel(stepHandle: StepHandle): void {
+		(stepHandle as ManagedStepHandle).cancel();
 	}
 
-	private resolveBehavior(state: MockTaskState, failures: string[]): MockBehavior {
+	private resolveBehavior(state: MockStepState, failures: string[]): MockBehavior {
 		const attempt = state.attempt;
 
 		return (
@@ -130,18 +130,18 @@ export class MockHarness implements HarnessAdapter {
 		);
 	}
 
-	private runAttempt(handle: ManagedTaskHandle, failures: string[]): void {
+	private runAttempt(handle: ManagedStepHandle, failures: string[]): void {
 		const state = this.state.get(handle);
 		if (!state) {
-			throw new Error("Unknown mock task handle");
+			throw new Error("Unknown mock step handle");
 		}
 
 		state.attempt += 1;
 		const attempt = state.attempt;
 		const behavior = this.resolveBehavior(state, failures);
 		const progress = new AsyncQueue<ProgressUpdate>();
-		const completed = createDeferred<TaskResult>();
-		const errored = createDeferred<TaskError>();
+		const completed = createDeferred<StepResult>();
+		const errored = createDeferred<StepError>();
 		let canceled = false;
 
 		handle.setAttempt({
@@ -188,7 +188,7 @@ export class MockHarness implements HarnessAdapter {
 				if (canceled) {
 					progress.close();
 					errored.resolve({
-						message: "Mock task canceled",
+						message: "Mock step canceled",
 						retryable: false,
 					});
 					return;
@@ -212,7 +212,7 @@ export class MockHarness implements HarnessAdapter {
 
 				if (shouldFail(attempt, behavior.failOnAttempt)) {
 					errored.resolve({
-						message: behavior.errorMessage ?? `Mock task failed on attempt ${attempt}`,
+						message: behavior.errorMessage ?? `Mock step failed on attempt ${attempt}`,
 						retryable: behavior.retryable ?? true,
 						modifiedFiles,
 					});
@@ -227,7 +227,7 @@ export class MockHarness implements HarnessAdapter {
 			} catch (error) {
 				progress.close();
 				errored.resolve({
-					message: error instanceof Error ? error.message : "Mock task failed unexpectedly",
+					message: error instanceof Error ? error.message : "Mock step failed unexpectedly",
 					logs: error instanceof Error ? error.stack : String(error),
 					retryable: false,
 				});

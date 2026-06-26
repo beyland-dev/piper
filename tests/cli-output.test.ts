@@ -50,23 +50,23 @@ describe("CliReporter", () => {
 			stderr: stderr.stream,
 		});
 
-		reporter.taskStarted({
-			id: "task-1",
+		reporter.stepStarted({
+			id: "step-1",
 			goal: "Plan",
 			harness: "mock",
 			attempt: 1,
 		});
-		reporter.taskProgress(
-			{ id: "task-1", goal: "Plan", harness: "mock", attempt: 1 },
+		reporter.stepProgress(
+			{ id: "step-1", goal: "Plan", harness: "mock", attempt: 1 },
 			{ message: "agent line", attempt: 1, timestamp: 1, stream: "stdout" },
 		);
-		reporter.taskCompleted(
-			{ id: "task-1", goal: "Plan", harness: "mock", attempt: 1 },
+		reporter.stepCompleted(
+			{ id: "step-1", goal: "Plan", harness: "mock", attempt: 1 },
 			{ output: "Done", modifiedFiles: [] },
 		);
 
 		expect(stdout.read()).toBe(
-			"[run] Plan\n      id=task-1  harness=mock  attempt=1\n\n      agent line\n\n[done] Successfully completed task-1\n",
+			"[run] Plan\n      id=step-1  harness=mock  attempt=1\n\n      agent line\n\n[done] Successfully completed step-1\n",
 		);
 		expect(stderr.read()).toBe("");
 	});
@@ -77,25 +77,23 @@ describe("CliReporter", () => {
 		const stdout = createBufferStream({ isTTY: true });
 		const reporter = new CliReporter({ verbose: true, stdout: stdout.stream });
 
-		reporter.taskStarted({
-			id: "task-1",
+		reporter.stepStarted({
+			id: "step-1",
 			goal: "Plan",
 			harness: "mock",
 			attempt: 1,
 		});
-		reporter.taskProgress(
-			{ id: "task-1", goal: "Plan", harness: "mock", attempt: 1 },
+		reporter.stepProgress(
+			{ id: "step-1", goal: "Plan", harness: "mock", attempt: 1 },
 			{ message: "warning line", attempt: 1, timestamp: 1, stream: "stderr" },
 		);
-		reporter.taskCompleted(
-			{ id: "task-1", goal: "Plan", harness: "mock", attempt: 1 },
+		reporter.stepCompleted(
+			{ id: "step-1", goal: "Plan", harness: "mock", attempt: 1 },
 			{ output: "Done", modifiedFiles: [] },
 		);
 		reporter.summary({
 			completedSteps: 1,
 			failedSteps: 0,
-			completedTasks: 1,
-			failedTasks: 0,
 			artifacts: {},
 			feedback: [],
 			events: [],
@@ -105,8 +103,8 @@ describe("CliReporter", () => {
 
 		expect(stdout.read()).toContain("\u001b[36m[run]\u001b[39m");
 		expect(stdout.read()).toContain("\u001b[1mPlan\u001b[22m");
-		expect(stdout.read()).toContain("\u001b[1mtask-1\u001b[22m");
-		expect(stdout.read()).toContain("      \u001b[2mid=task-1  harness=mock  attempt=1\u001b[22m");
+		expect(stdout.read()).toContain("\u001b[1mstep-1\u001b[22m");
+		expect(stdout.read()).toContain("      \u001b[2mid=step-1  harness=mock  attempt=1\u001b[22m");
 		expect(stdout.read()).toContain("\u001b[33mwarning line\u001b[39m");
 		expect(stdout.read()).toContain("\u001b[32m[summary]\u001b[39m");
 	});

@@ -78,7 +78,7 @@ describe("CopilotAhpHarness", () => {
 			connect: async () => fakeClient as unknown as AhpClient,
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Create a plan",
 			model: "gpt-5.4",
 			context: ["Use tests"],

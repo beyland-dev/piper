@@ -34,16 +34,15 @@ type ChildrenOptions<TOptions extends object> = TOptions & { children?: LoopTree
 
 export interface FanOutSliceContext {
 	name: string;
-	artifact: ArtifactTarget;
+	target: ArtifactTarget;
 	from: ArtifactTarget;
 	index: number;
 }
 
 export type FanOutSlice =
 	| ArtifactTarget
-	| (Omit<StepProps, "goal" | "context" | "produces" | "artifact"> & {
+	| (Omit<StepProps, "goal" | "context" | "produces"> & {
 			name?: string;
-			artifact?: ArtifactTarget;
 			produces?: ArtifactTarget;
 			goal?: string;
 			context?: ContextValue[];
@@ -100,9 +99,9 @@ function fanOutSliceArtifact(slice: FanOutSlice): ArtifactTarget {
 		return slice;
 	}
 
-	const target = slice.produces ?? slice.artifact ?? slice.name;
+	const target = slice.produces ?? slice.name;
 	if (!target) {
-		throw new Error("fanOut slices must include a name, artifact, or produces target.");
+		throw new Error("fanOut slices must include a name or produces target.");
 	}
 
 	return target;
@@ -206,12 +205,12 @@ export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]):
 }
 
 /**
- * Maps a source artifact into parallel downstream slice tasks.
+ * Maps a source artifact into parallel downstream slice steps.
  *
  * @param options.from - Artifact whose value is passed to every generated slice.
- * @param options.into - Artifact targets, or per-slice task options, to produce in parallel.
- * @param options.using - Shared goal prefix for generated steps, or a callback that returns a custom task tree for each slice.
- * @returns A transparent parallel node containing the generated slice task trees.
+ * @param options.into - Artifact targets, or per-slice step options, to produce in parallel.
+ * @param options.using - Shared goal prefix for generated steps, or a callback that returns a custom loop tree for each slice.
+ * @returns A transparent parallel node containing the generated slice loop trees.
  *
  * @example
  * fanOut({ from: plan, into: [apiChange, uiChange], using: "Implement slice" })
@@ -220,7 +219,7 @@ export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]):
  * fanOut({
  *   from: plan,
  *   into: [apiChange, uiChange],
- *   using: ({ name, artifact }) => task({ goal: `Implement ${name}`, produces: artifact }),
+ *   using: ({ name, target }) => step({ goal: `Implement ${name}`, produces: target }),
  * })
  */
 export function fanOut(options: FanOutProps): ParallelNode {
@@ -228,7 +227,7 @@ export function fanOut(options: FanOutProps): ParallelNode {
 	const children = options.into.flatMap((slice, index) => {
 		const target = fanOutSliceArtifact(slice);
 		const name = fanOutSliceName(slice);
-		const sliceContext = { name, artifact: target, from: options.from, index };
+		const sliceContext = { name, target, from: options.from, index };
 
 		if (typeof options.using === "function") {
 			return normalizeChildren(options.using(sliceContext));
@@ -289,13 +288,6 @@ export function state(props: StateProps): StateNode {
 	};
 }
 
-export const workflow = loop;
-export const task = step;
-export const protect = policy;
-export const recover = repeat;
-
 export type ParallelOptions = Omit<ParallelProps, "children">;
 export type PolicyOptions = Omit<PolicyProps, "children">;
-export type ProtectOptions = PolicyOptions;
 export type RepeatOptions = Omit<RepeatProps, "children">;
-export type RecoverOptions = RepeatOptions;

@@ -15,19 +15,19 @@ function createBufferStream(onChunk: (chunk: string) => void): Writable {
 	});
 }
 
-function createWorkflowGeneratorTemplate(
-	source = 'import { task } from "@beyland/piper";\\n\\nexport default task({ goal: "Generated task", harness: "mock" });\\n',
+function createLoopGeneratorTemplate(
+	source = 'import { step } from "@beyland/piper";\\n\\nexport default step({ goal: "Generated step", harness: "mock" });\\n',
 ): string {
 	const script = [
 		'const fs = require("node:fs");',
 		'const path = require("node:path");',
 		'const context = process.env.AGENT_CONTEXT ?? "";',
-		"const match = context.match(/Target workflow path:\\n([^\\n]+)/);",
-		'if (!match) throw new Error("missing target workflow path");',
+		"const match = context.match(/Target loop path:\\n([^\\n]+)/);",
+		'if (!match) throw new Error("missing target loop path");',
 		`const source = \`${source}\`;`,
 		"fs.mkdirSync(path.dirname(match[1]), { recursive: true });",
 		'fs.writeFileSync(match[1], source, "utf8");',
-		'console.log("generated workflow");',
+		'console.log("generated loop");',
 	].join(" ");
 	return `node -e '${script}'`;
 }
@@ -58,23 +58,24 @@ describe("CLI end-to-end", () => {
 		await rm(artifactRoot, { recursive: true, force: true });
 	});
 
-	it("loads a workflow file and executes mock tasks", async () => {
+	it("loads a loop file and executes mock steps", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 
-		const workflowPath = join(workspacePath, "demo.piper.ts");
+		const loopPath = join(workspacePath, "demo.piper.ts");
 		await writeFile(
-			workflowPath,
+			loopPath,
 			`
-        import { artifact, parallel, workflow, task } from "@beyland/piper";
+        import { artifact, loop, parallel, step } from "@beyland/piper";
 
-        export default function DemoWorkflow() {
-          return workflow(
-            task({ goal: "Plan", harness: "mock", artifact: "plan" }),
+        export default function DemoLoop() {
+          return loop(
+            { objective: "Run demo loop" },
+            step({ goal: "Plan", harness: "mock", produces: "plan" }),
             parallel(
               { status: "waiting" },
-              task({ goal: "Implement", harness: "mock", context: [artifact("plan").value()] }),
-              task({ goal: "Test", harness: "mock", context: [artifact("plan").value()] })
+              step({ goal: "Implement", harness: "mock", context: [artifact("plan").value()] }),
+              step({ goal: "Test", harness: "mock", context: [artifact("plan").value()] })
             )
           );
         }
@@ -84,7 +85,7 @@ describe("CLI end-to-end", () => {
 
 		let stdout = "";
 		let stderr = "";
-		const exitCode = await runCli([workflowPath, "--workspace", workspacePath], {
+		const exitCode = await runCli([loopPath, "--workspace", workspacePath], {
 			stdout: createBufferStream((chunk) => {
 				stdout += chunk;
 			}),
@@ -108,14 +109,14 @@ describe("CLI end-to-end", () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 
-		const workflowPath = join(workspacePath, "demo.piper.ts");
+		const loopPath = join(workspacePath, "demo.piper.ts");
 		await writeFile(
-			workflowPath,
+			loopPath,
 			`
-        import { task } from "@beyland/piper";
+        import { step } from "@beyland/piper";
 
-        export default function DemoWorkflow() {
-          return task({ goal: "Plan", harness: "mock" });
+        export default function DemoLoop() {
+          return step({ goal: "Plan", harness: "mock" });
         }
       `,
 			"utf8",
@@ -123,7 +124,7 @@ describe("CLI end-to-end", () => {
 
 		let stdout = "";
 		let stderr = "";
-		const exitCode = await runCli([workflowPath, "--workspace", workspacePath, "--quiet"], {
+		const exitCode = await runCli([loopPath, "--workspace", workspacePath, "--quiet"], {
 			stdout: createBufferStream((chunk) => {
 				stdout += chunk;
 			}),
@@ -144,14 +145,14 @@ describe("CLI end-to-end", () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 
-		const workflowPath = join(workspacePath, "demo.piper.ts");
+		const loopPath = join(workspacePath, "demo.piper.ts");
 		await writeFile(
-			workflowPath,
+			loopPath,
 			`
-        import { task } from "@beyland/piper";
+        import { step } from "@beyland/piper";
 
-        export default function DemoWorkflow() {
-          return task({ goal: "Plan with Copilot", harness: "copilot" });
+        export default function DemoLoop() {
+          return step({ goal: "Plan with Copilot", harness: "copilot" });
         }
       `,
 			"utf8",
@@ -163,7 +164,7 @@ describe("CLI end-to-end", () => {
 		try {
 			let stdout = "";
 			let stderr = "";
-			const exitCode = await runCli([workflowPath, "--workspace", workspacePath], {
+			const exitCode = await runCli([loopPath, "--workspace", workspacePath], {
 				stdout: createBufferStream((chunk) => {
 					stdout += chunk;
 				}),
@@ -185,20 +186,20 @@ describe("CLI end-to-end", () => {
 		}
 	});
 
-	it("generates and previews a workflow", async () => {
+	it("generates and previews a loop", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
-		const outputPath = join(workspacePath, "workflows", "generated.piper.ts");
+		const outputPath = join(workspacePath, "loops", "generated.piper.ts");
 
 		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
-		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+		process.env.COPILOT_COMMAND_TEMPLATE = createLoopGeneratorTemplate();
 
 		try {
 			let stdout = "";
 			let stderr = "";
 			const exitCode = await runCli(
 				[
-					"Create a workflow for fixing tests",
+					"Create a loop for fixing tests",
 					"--workspace",
 					workspacePath,
 					"--output",
@@ -219,10 +220,10 @@ describe("CLI end-to-end", () => {
 
 			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
-			expect(generated).toContain('goal: "Generated task"');
-			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
-			expect(stdout).toContain("[info] Generated workflow dry run");
-			expect(stdout).toContain("Step(harness=mock): Generated task");
+			expect(generated).toContain('goal: "Generated step"');
+			expect(stdout).toContain(`[info] Generated loop written to ${outputPath}`);
+			expect(stdout).toContain("[info] Generated loop dry run");
+			expect(stdout).toContain("Step(harness=mock): Generated step");
 		} finally {
 			if (previousTemplate === undefined) {
 				delete process.env.COPILOT_COMMAND_TEMPLATE;
@@ -232,14 +233,14 @@ describe("CLI end-to-end", () => {
 		}
 	});
 
-	it("can save a generated workflow without loading or executing it", async () => {
+	it("can save a generated loop without loading or executing it", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 		const outputPath = join(workspacePath, "generated.piper.ts");
 
 		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
-		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate(
-			"export default missingTask;\\n",
+		process.env.COPILOT_COMMAND_TEMPLATE = createLoopGeneratorTemplate(
+			"export default missingStep;\\n",
 		);
 
 		try {
@@ -247,7 +248,7 @@ describe("CLI end-to-end", () => {
 			let stderr = "";
 			const exitCode = await runCli(
 				[
-					"Create a workflow for fixing tests",
+					"Create a loop for fixing tests",
 					"--workspace",
 					workspacePath,
 					"--output",
@@ -268,10 +269,10 @@ describe("CLI end-to-end", () => {
 
 			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
-			expect(generated).toBe("export default missingTask;\n");
-			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
-			expect(stdout).not.toContain("[info] Generated workflow dry run");
-			expect(stdout).not.toContain("[run] Generated task");
+			expect(generated).toBe("export default missingStep;\n");
+			expect(stdout).toContain(`[info] Generated loop written to ${outputPath}`);
+			expect(stdout).not.toContain("[info] Generated loop dry run");
+			expect(stdout).not.toContain("[run] Generated step");
 		} finally {
 			if (previousTemplate === undefined) {
 				delete process.env.COPILOT_COMMAND_TEMPLATE;
@@ -281,20 +282,20 @@ describe("CLI end-to-end", () => {
 		}
 	});
 
-	it("executes a generated workflow when requested", async () => {
+	it("executes a generated loop when requested", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 		const outputPath = join(workspacePath, "generated.piper.ts");
 
 		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
-		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+		process.env.COPILOT_COMMAND_TEMPLATE = createLoopGeneratorTemplate();
 
 		try {
 			let stdout = "";
 			let stderr = "";
 			const exitCode = await runCli(
 				[
-					"Create a workflow for fixing tests",
+					"Create a loop for fixing tests",
 					"--workspace",
 					workspacePath,
 					"--output",
@@ -313,8 +314,8 @@ describe("CLI end-to-end", () => {
 
 			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
-			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
-			expect(stdout).toContain("[run] Generated task");
+			expect(stdout).toContain(`[info] Generated loop written to ${outputPath}`);
+			expect(stdout).toContain("[run] Generated step");
 			expect(stdout).toContain("[summary] completed=1 failed=0");
 		} finally {
 			if (previousTemplate === undefined) {
@@ -331,7 +332,7 @@ describe("CLI end-to-end", () => {
 		const outputPath = join(workspacePath, "generated.piper.ts");
 
 		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
-		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+		process.env.COPILOT_COMMAND_TEMPLATE = createLoopGeneratorTemplate();
 
 		try {
 			let stdout = "";
@@ -352,9 +353,9 @@ describe("CLI end-to-end", () => {
 
 			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
-			expect(generated).toContain('goal: "Generated task"');
-			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
-			expect(stdout).toContain("[info] Generated workflow dry run");
+			expect(generated).toContain('goal: "Generated step"');
+			expect(stdout).toContain(`[info] Generated loop written to ${outputPath}`);
+			expect(stdout).toContain("[info] Generated loop dry run");
 		} finally {
 			if (previousTemplate === undefined) {
 				delete process.env.COPILOT_COMMAND_TEMPLATE;
@@ -364,18 +365,18 @@ describe("CLI end-to-end", () => {
 		}
 	});
 
-	it("accepts a leading argument separator before the workflow path", async () => {
+	it("accepts a leading argument separator before the loop path", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 
-		const workflowPath = join(workspacePath, "demo.piper.ts");
+		const loopPath = join(workspacePath, "demo.piper.ts");
 		await writeFile(
-			workflowPath,
+			loopPath,
 			`
-        import { task } from "@beyland/piper";
+        import { step } from "@beyland/piper";
 
-        export default function DemoWorkflow() {
-          return task({ goal: "Plan", harness: "mock" });
+        export default function DemoLoop() {
+          return step({ goal: "Plan", harness: "mock" });
         }
       `,
 			"utf8",
@@ -383,7 +384,7 @@ describe("CLI end-to-end", () => {
 
 		let stdout = "";
 		let stderr = "";
-		const exitCode = await runCli(["--", workflowPath, "--dry-run"], {
+		const exitCode = await runCli(["--", loopPath, "--dry-run"], {
 			stdout: createBufferStream((chunk) => {
 				stdout += chunk;
 			}),
@@ -398,7 +399,7 @@ describe("CLI end-to-end", () => {
 		expect(stdout).toContain("Step(harness=mock): Plan");
 	});
 
-	it("prints help when no workflow path is provided", async () => {
+	it("prints help when no loop path is provided", async () => {
 		let stdout = "";
 		let stderr = "";
 		const exitCode = await runCli([], {
@@ -419,22 +420,22 @@ describe("CLI end-to-end", () => {
 		expect(stdout).toContain("--help");
 		expect(stdout).toContain("Examples:");
 		expect(stdout).toContain('piper "Fix the failing tests"');
-		expect(stdout).toContain("piper examples/simple-task.piper.ts --dry-run");
-		expect(stdout).toContain("pnpm exec piper examples/simple-task.piper.ts --workspace .");
+		expect(stdout).toContain("piper examples/simple-loop.piper.ts --dry-run");
+		expect(stdout).toContain("pnpm exec piper examples/simple-loop.piper.ts --workspace .");
 	});
 
-	it("prints the compiled workflow module", async () => {
+	it("prints the compiled loop module", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 
-		const workflowPath = join(workspacePath, "demo.piper.ts");
+		const loopPath = join(workspacePath, "demo.piper.ts");
 		await writeFile(
-			workflowPath,
+			loopPath,
 			`
-        import { task } from "@beyland/piper";
+        import { step } from "@beyland/piper";
 
-        export default function DemoWorkflow() {
-          return task({ goal: "Plan", harness: "mock" });
+        export default function DemoLoop() {
+          return step({ goal: "Plan", harness: "mock" });
         }
       `,
 			"utf8",
@@ -442,7 +443,7 @@ describe("CLI end-to-end", () => {
 
 		let stdout = "";
 		let stderr = "";
-		const exitCode = await runCli([workflowPath, "--print-compiled"], {
+		const exitCode = await runCli([loopPath, "--print-compiled"], {
 			stdout: createBufferStream((chunk) => {
 				stdout += chunk;
 			}),
@@ -453,7 +454,7 @@ describe("CLI end-to-end", () => {
 
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
-		expect(stdout).toContain("function DemoWorkflow");
+		expect(stdout).toContain("function DemoLoop");
 		expect(stdout).toContain('goal: "Plan"');
 	});
 
@@ -461,14 +462,14 @@ describe("CLI end-to-end", () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
 
-		const workflowPath = join(workspacePath, "demo.piper.ts");
+		const loopPath = join(workspacePath, "demo.piper.ts");
 		await writeFile(
-			workflowPath,
+			loopPath,
 			`
-        import { task } from "@beyland/piper";
+        import { step } from "@beyland/piper";
 
-        export default function DemoWorkflow() {
-          return task({ goal: "Long task", harness: "mock", artifact: "result" });
+        export default function DemoLoop() {
+          return step({ goal: "Long step", harness: "mock", produces: "result" });
         }
       `,
 			"utf8",
@@ -482,10 +483,10 @@ describe("CLI end-to-end", () => {
 			sendInterrupt = resolve;
 		});
 
-		const run = runCli([workflowPath, "--workspace", workspacePath], {
+		const run = runCli([loopPath, "--workspace", workspacePath], {
 			stdout: createBufferStream((chunk) => {
 				stdout += chunk;
-				if (chunk.includes("[run] Long task")) {
+				if (chunk.includes("[run] Long step")) {
 					sendInterrupt?.();
 				}
 			}),
@@ -499,8 +500,8 @@ describe("CLI end-to-end", () => {
 		signalTarget.emit("SIGINT");
 
 		await expect(run).resolves.toBe(130);
-		expect(stdout).toContain("[run] Long task");
+		expect(stdout).toContain("[run] Long step");
 		expect(stdout).toContain("id=step-1");
-		expect(stderr).toContain("[cancel] Received SIGINT; cancelling in-flight tasks...");
+		expect(stderr).toContain("[cancel] Received SIGINT; cancelling in-flight steps...");
 	});
 });

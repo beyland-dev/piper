@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MockHarness, PiperOrchestrator, artifact, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, artifact, step } from "../src/index.js";
 
 describe("artifact", () => {
 	const directories: string[] = [];
@@ -13,7 +13,7 @@ describe("artifact", () => {
 		);
 	});
 
-	it("passes named artifact into downstream task context", async () => {
+	it("passes named artifact into downstream step context", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-"));
 		directories.push(workspacePath);
 
@@ -31,14 +31,14 @@ describe("artifact", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 		const plan = artifact("plan");
 
 		await executor.execute([
-			task({ goal: "Create plan", harness: "mock", artifact: plan }),
-			task({ goal: "Implement feature", harness: "mock", context: [plan.value()] }),
+			step({ goal: "Create plan", harness: "mock", produces: plan }),
+			step({ goal: "Implement feature", harness: "mock", context: [plan.value()] }),
 		]);
 
 		const downstreamAttempt = adapter.history.find((entry) => entry.goal === "Implement feature");
@@ -61,7 +61,7 @@ describe("artifact", () => {
 					},
 				}),
 			],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: {
 				rootDir: outputRoot,
 				runId: "test-run",
@@ -69,7 +69,7 @@ describe("artifact", () => {
 		});
 
 		const summary = await executor.execute(
-			task({ goal: "Create plan", harness: "mock", artifact: "plan" }),
+			step({ goal: "Create plan", harness: "mock", produces: "plan" }),
 		);
 
 		expect(summary.runId).toBe("test-run");
@@ -78,11 +78,11 @@ describe("artifact", () => {
 		const persisted = JSON.parse(await readFile(summary.artifactPath as string, "utf8")) as {
 			runId: string;
 			artifacts: Record<string, { output: string }>;
-			summary: { completedTasks: number };
+			summary: { completedSteps: number };
 		};
 
 		expect(persisted.runId).toBe("test-run");
 		expect(persisted.artifacts.plan.output).toBe("Persisted plan");
-		expect(persisted.summary.completedTasks).toBe(1);
+		expect(persisted.summary.completedSteps).toBe(1);
 	});
 });

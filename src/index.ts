@@ -9,14 +9,10 @@ export {
 	loop,
 	parallel,
 	policy,
-	protect,
-	recover,
 	repeat,
 	state,
 	step,
-	task,
 	until,
-	workflow,
 	branch,
 } from "./core/builder.js";
 export type {
@@ -25,14 +21,8 @@ export type {
 	FanOutSliceContext,
 	ParallelOptions,
 	PolicyOptions,
-	ProtectOptions,
-	RecoverOptions,
 	RepeatOptions,
 } from "./core/builder.js";
-export { Step, Task } from "./core/task.js";
-export { Parallel } from "./core/parallel.js";
-export { Repeat, Recover } from "./core/recover.js";
-export { Policy, Protect } from "./core/protect.js";
 export { artifact, isArtifact, isRuntimeValue, runtimeValue } from "./core/output.js";
 export {
 	criticLoop,
@@ -82,14 +72,11 @@ export type {
 	StateNode,
 	StateProps,
 	StepAttemptInfo,
+	StepError,
+	StepHandle,
 	StepNode,
 	StepProps,
-	TaskAttemptInfo,
-	TaskError,
-	TaskHandle,
-	TaskNode,
-	TaskResult,
-	TaskTree,
+	StepResult,
 } from "./core/types.js";
 export { MockHarness } from "./adapters/mock-adapter.js";
 export { PiHarness } from "./adapters/pi-adapter.js";

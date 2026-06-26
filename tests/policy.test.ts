@@ -3,10 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MockHarness, PiperOrchestrator, protect, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, policy, step } from "../src/index.js";
 
 async function createGitWorkspace(): Promise<string> {
-	const workspacePath = await mkdtemp(join(tmpdir(), "piper-protect-"));
+	const workspacePath = await mkdtemp(join(tmpdir(), "piper-policy-"));
 	execFileSync("git", ["init"], { cwd: workspacePath });
 	execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: workspacePath });
 	execFileSync("git", ["config", "user.name", "Test User"], { cwd: workspacePath });
@@ -16,7 +16,7 @@ async function createGitWorkspace(): Promise<string> {
 	return workspacePath;
 }
 
-describe("Protect", () => {
+describe("policy", () => {
 	const directories: string[] = [];
 
 	afterEach(async () => {
@@ -57,13 +57,13 @@ describe("Protect", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 1,
+			stepRetryLimit: 1,
 		});
 
 		await executor.execute(
-			protect(
+			policy(
 				{ protectedFiles: ["auth_legacy.ts"] },
-				task({ goal: "Review task", harness: "mock" }),
+				step({ goal: "Review step", harness: "mock" }),
 			),
 		);
 

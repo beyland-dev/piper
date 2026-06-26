@@ -32,7 +32,7 @@ describe("MockHarness", () => {
 			},
 		});
 
-		const handle = adapter.startTask({
+		const handle = adapter.startStep({
 			goal: "Write file",
 			context: [],
 			workspacePath,

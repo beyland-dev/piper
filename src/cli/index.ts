@@ -13,7 +13,7 @@ import { step } from "../core/builder.js";
 import { normalizeTree } from "../core/node-utils.js";
 import type { ConcreteLoopNode, HarnessAdapter, RuntimeHooks } from "../core/types.js";
 import { isPiperCancellationError, PiperOrchestrator } from "../runtime/executor.js";
-import { CliReporter, formatTaskTree } from "./output.js";
+import { CliReporter, formatLoopTree } from "./output.js";
 
 const CANCELLATION_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 
@@ -25,7 +25,7 @@ interface SignalTarget {
 }
 
 interface RunOptions {
-	workflowPath: string;
+	loopPath: string;
 	workspacePath: string;
 	verbose: boolean;
 	dryRun: boolean;
@@ -62,47 +62,47 @@ interface RunCliOptions {
 }
 
 const HELP_TEXT = `Usage: piper <prompt> [options]
-       piper <workflow.piper.ts> [options]
+       piper <loop.piper.ts> [options]
 
-Generate a Piper workflow from an initial prompt, or compile and run a workflow file.
+Generate a Piper loop from an initial prompt, or compile and run a loop file.
 
 Arguments:
-  workflow.piper.ts       Path to the workflow module.
-  prompt                  Initial prompt for generated workflow authoring.
+  loop.piper.ts           Path to the loop module.
+  prompt                  Initial prompt for generated loop authoring.
 
 Options:
-  --workspace <path>      Workspace directory for task execution. Defaults to the current directory.
+  --workspace <path>      Workspace directory for step execution. Defaults to the current directory.
   --quiet                 Print only high-level runtime artifact.
   --verbose               Print verbose runtime artifact. This is the default.
-  --dry-run               Print the task tree without executing it.
-  --print-compiled        Print the bundled workflow module without executing it.
-  --harness <name>        Harness to use for workflow generation. Defaults to copilot.
-  --output <path>         Generated workflow path. Defaults to generated.piper.ts.
-  --save-only             Save the generated workflow without validating or executing it.
-  --execute               Execute the generated workflow after validation.
-  --dry-run-generated     Print the generated task tree after validation without executing it.
+  --dry-run               Print the loop tree without executing it.
+  --print-compiled        Print the bundled loop module without executing it.
+  --harness <name>        Harness to use for loop generation. Defaults to copilot.
+  --output <path>         Generated loop path. Defaults to generated.piper.ts.
+  --save-only             Save the generated loop without validating or executing it.
+  --execute               Execute the generated loop after validation.
+  --dry-run-generated     Print the generated loop tree after validation without executing it.
   -h, --help              Show this help information.
 
 Examples:
-  piper "Fix the failing tests" --workspace . --output workflows/generated.piper.ts
-      Ask a harness to write a workflow file, then validate it.
+  piper "Fix the failing tests" --workspace . --output loops/generated.piper.ts
+      Ask a harness to write a loop file, then validate it.
 
   piper "Prepare a migration plan" --dry-run-generated
-      Generate and preview the task tree without executing the generated workflow.
+      Generate and preview the loop tree without executing the generated loop.
 
-  piper examples/simple-task.piper.ts --dry-run
-      Preview the task tree without executing tasks.
+  piper examples/simple-loop.piper.ts --dry-run
+      Preview the loop tree without executing steps.
 
-  piper examples/simple-task.piper.ts --quiet
-      Suppress verbose progress artifact while tasks execute.
+  piper examples/simple-loop.piper.ts --quiet
+      Suppress verbose progress artifact while steps execute.
 
-  piper examples/simple-task.piper.ts --print-compiled
-      Inspect the bundled workflow module without executing it.
+  piper examples/simple-loop.piper.ts --print-compiled
+      Inspect the bundled loop module without executing it.
 
-  pnpm exec piper examples/simple-task.piper.ts --workspace .
+  pnpm exec piper examples/simple-loop.piper.ts --workspace .
       Run an installed Piper CLI through a package manager.`;
 
-function isWorkflowPathArgument(value: string, cwd: string): boolean {
+function isLoopPathArgument(value: string, cwd: string): boolean {
 	const resolved = resolve(cwd, value);
 	return existsSync(resolved) || /\.(?:piper\.)?(?:[cm]?ts|[cm]?js)$/.test(value);
 }
@@ -221,7 +221,7 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 		return { kind: "help" };
 	}
 
-	if (!isWorkflowPathArgument(firstArg, cwd)) {
+	if (!isLoopPathArgument(firstArg, cwd)) {
 		return parseGenerateArguments(firstArg, values, cwd);
 	}
 
@@ -270,7 +270,7 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 
 	return {
 		kind: "run",
-		workflowPath: resolve(cwd, firstArg),
+		loopPath: resolve(cwd, firstArg),
 		workspacePath,
 		verbose,
 		dryRun,
@@ -278,11 +278,11 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 	};
 }
 
-async function compileWorkflow(workflowPath: string): Promise<string> {
+async function compileLoop(loopPath: string): Promise<string> {
 	const runtimeEntry = await resolveRuntimeEntry("index");
 
 	const buildResult = await build({
-		entryPoints: [workflowPath],
+		entryPoints: [loopPath],
 		bundle: true,
 		format: "esm",
 		platform: "node",
@@ -301,21 +301,21 @@ async function compileWorkflow(workflowPath: string): Promise<string> {
 
 	const contents = buildResult.outputFiles[0]?.text;
 	if (!contents) {
-		throw new Error(`Failed to compile workflow: ${workflowPath}`);
+		throw new Error(`Failed to compile loop: ${loopPath}`);
 	}
 
 	return contents;
 }
 
-async function loadWorkflow(workflowPath: string): Promise<ConcreteLoopNode> {
-	const contents = await compileWorkflow(workflowPath);
+async function loadLoop(loopPath: string): Promise<ConcreteLoopNode> {
+	const contents = await compileLoop(loopPath);
 
 	const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(contents)}`;
 	const module = await import(moduleUrl);
 	const exported = module.default;
 
 	if (!exported) {
-		throw new Error("Workflow module must export a default task tree or default function.");
+		throw new Error("Loop module must export a default loop tree or default function.");
 	}
 
 	const tree = typeof exported === "function" ? exported() : exported;
@@ -383,19 +383,19 @@ function createDefaultHarnesses(): HarnessAdapter[] {
 
 function buildGenerationGoal(options: GenerateOptions): string {
 	return [
-		"Generate a Piper workflow file from the user's prompt.",
+		"Generate a Piper loop file from the user's prompt.",
 		`User prompt:\n${options.prompt}`,
-		`Write the generated workflow to:\n${options.outputPath}`,
+		`Write the generated loop to:\n${options.outputPath}`,
 	].join("\n\n");
 }
 
 function buildGenerationContext(options: GenerateOptions): string[] {
 	return [
-		`Target workflow path:\n${options.outputPath}`,
+		`Target loop path:\n${options.outputPath}`,
 		`Workspace path:\n${options.workspacePath}`,
 		[
 			"Authoring requirements:",
-			"- Write a TypeScript .piper.ts workflow file at the target path.",
+			"- Write a TypeScript .piper.ts loop file at the target path.",
 			'- Import loop builders from "@beyland/piper".',
 			"- Export a default loop tree or a default function returning a loop tree.",
 			"- Use the current meta-harness API: loop, agent, step, evaluate, repeat, parallel, compare, gate, policy, artifact, and runtimeValue.",
@@ -435,7 +435,7 @@ function installCancellationHandlers(params: {
 			return;
 		}
 
-		params.stderr.write(`[cancel] Received ${signal}; cancelling in-flight tasks...\n`);
+		params.stderr.write(`[cancel] Received ${signal}; cancelling in-flight steps...\n`);
 		cancellationPromise = params.orchestrator
 			.cancel(`Received ${signal}; cancelling Piper run.`, signal)
 			.catch((error: unknown) => {
@@ -464,15 +464,15 @@ function installCancellationHandlers(params: {
 	};
 }
 
-async function executeTaskTree(params: {
-	taskTree: ConcreteLoopNode;
+async function executeLoopTree(params: {
+	loopTree: ConcreteLoopNode;
 	workspacePath: string;
 	hooks: RuntimeHooks;
 	cliOptions: RunCliOptions;
 }): Promise<void> {
 	const orchestrator = new PiperOrchestrator({
 		workspacePath: params.workspacePath,
-		taskRetryLimit: 3,
+		stepRetryLimit: 3,
 		hooks: params.hooks,
 		artifactStorage: process.env.PIPER_ARTIFACT_ROOT
 			? { rootDir: process.env.PIPER_ARTIFACT_ROOT }
@@ -487,7 +487,7 @@ async function executeTaskTree(params: {
 	});
 
 	try {
-		await orchestrator.execute(params.taskTree);
+		await orchestrator.execute(params.loopTree);
 		await signalCancellation.settle();
 	} catch (error) {
 		await signalCancellation.settle();
@@ -519,8 +519,8 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 
 		if (parsed.kind === "generate") {
 			await mkdir(dirname(parsed.outputPath), { recursive: true });
-			await executeTaskTree({
-				taskTree: step({
+			await executeLoopTree({
+				loopTree: step({
 					goal: buildGenerationGoal(parsed),
 					harness: parsed.harness,
 					context: buildGenerationContext(parsed),
@@ -532,22 +532,22 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 
 			if (parsed.saveOnly) {
 				await access(parsed.outputPath, fsConstants.F_OK);
-				hooks.info(`Generated workflow written to ${parsed.outputPath}`);
+				hooks.info(`Generated loop written to ${parsed.outputPath}`);
 				return 0;
 			}
 
-			const generatedTaskTree = await loadWorkflow(parsed.outputPath);
-			hooks.info(`Generated workflow written to ${parsed.outputPath}`);
+			const generatedLoopTree = await loadLoop(parsed.outputPath);
+			hooks.info(`Generated loop written to ${parsed.outputPath}`);
 
 			if (parsed.dryRunGenerated) {
-				hooks.info("Generated workflow dry run");
-				hooks.info(formatTaskTree(generatedTaskTree));
+				hooks.info("Generated loop dry run");
+				hooks.info(formatLoopTree(generatedLoopTree));
 				return 0;
 			}
 
 			if (parsed.execute) {
-				await executeTaskTree({
-					taskTree: generatedTaskTree,
+				await executeLoopTree({
+					loopTree: generatedLoopTree,
 					workspacePath: parsed.workspacePath,
 					hooks,
 					cliOptions: options,
@@ -558,20 +558,20 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 		}
 
 		if (parsed.printCompiled) {
-			(options.stdout ?? process.stdout).write(`${await compileWorkflow(parsed.workflowPath)}\n`);
+			(options.stdout ?? process.stdout).write(`${await compileLoop(parsed.loopPath)}\n`);
 			return 0;
 		}
 
-		const taskTree = await loadWorkflow(parsed.workflowPath);
+		const loopTree = await loadLoop(parsed.loopPath);
 
 		if (parsed.dryRun) {
 			hooks.info("Dry run");
-			hooks.info(formatTaskTree(taskTree));
+			hooks.info(formatLoopTree(loopTree));
 			return 0;
 		}
 
-		await executeTaskTree({
-			taskTree,
+		await executeLoopTree({
+			loopTree,
 			workspacePath: parsed.workspacePath,
 			hooks,
 			cliOptions: options,

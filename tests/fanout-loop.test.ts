@@ -2,9 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MockHarness, PiperOrchestrator, artifact, fanOut, task, workflow } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, artifact, fanOut, loop, step } from "../src/index.js";
 
-describe("fanOut and workflow", () => {
+describe("fanOut and loop", () => {
 	const directories: string[] = [];
 
 	afterEach(async () => {
@@ -13,7 +13,7 @@ describe("fanOut and workflow", () => {
 		);
 	});
 
-	it("maps one artifact into parallel downstream slice tasks", async () => {
+	it("maps one artifact into parallel downstream slice steps", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-fanout-"));
 		directories.push(workspacePath);
 		const apiChange = artifact("api-change", "implementation");
@@ -27,13 +27,14 @@ describe("fanOut and workflow", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
 		const summary = await executor.execute(
-			workflow(
-				task({ goal: "Create shared plan", harness: "mock", produces: "plan" }),
+			loop(
+				{ objective: "Implement slices from shared plan" },
+				step({ goal: "Create shared plan", harness: "mock", produces: "plan" }),
 				fanOut({
 					from: "plan",
 					into: [apiChange, "ui-change"],
@@ -55,25 +56,26 @@ describe("fanOut and workflow", () => {
 		).toContain("Plan artifact");
 	});
 
-	it("keeps workflow as ordered grouping for task trees", async () => {
-		const workspacePath = await mkdtemp(join(tmpdir(), "piper-workflow-"));
+	it("keeps loop as ordered grouping for step trees", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-loop-"));
 		directories.push(workspacePath);
 		const adapter = new MockHarness();
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
 		const summary = await executor.execute(
-			workflow(
-				task({ goal: "First task", harness: "mock" }),
-				task({ goal: "Second task", harness: "mock" }),
+			loop(
+				{ objective: "Run ordered steps" },
+				step({ goal: "First step", harness: "mock" }),
+				step({ goal: "Second step", harness: "mock" }),
 			),
 		);
 
-		expect(summary.completedTasks).toBe(2);
-		expect(adapter.history.map((entry) => entry.goal)).toEqual(["First task", "Second task"]);
+		expect(summary.completedSteps).toBe(2);
+		expect(adapter.history.map((entry) => entry.goal)).toEqual(["First step", "Second step"]);
 	});
 });

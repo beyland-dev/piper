@@ -70,7 +70,7 @@ const uiChange = artifact("checkout-ui-change", "implementation");
 
 export default loop(
 	{
-		objective: "Compose a checkout improvement from reusable Piper blocks",
+		objective: "Compose a checkout improvement from reusable TypeScript functions",
 		agents: [
 			agent("planner", { harness: "copilot" }),
 			agent("implementer", { harness: "copilot" }),

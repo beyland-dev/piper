@@ -74,13 +74,11 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. Each ru
 - `feedback` — structured critique that flows into later iterations
 - `repeat` / `until` — explicit iteration until checks pass or attempts are exhausted
 - `parallel` — concurrent investigation or decomposition branches
-- `fanOut` — maps one artifact into parallel downstream slice tasks
+- `fanOut` — maps one artifact into parallel downstream slice steps
 - `compare` — run branches and produce a decision artifact
 - `gate` — approval checkpoint
 - `policy` — guardrails for constraints and protected files
 - `state` / `runtimeValue` — structured runtime data
-
-Compatibility aliases (`workflow`, `task`, `protect`, `recover`) remain exported, but new loops should prefer the loop-oriented names.
 
 ## Recipe API
 
@@ -97,35 +95,35 @@ Piper ships high-level recipes for common agent systems:
 
 Recipes are plain loop builders, so they can be composed with lower-level primitives.
 
-## Composition and proposed blocks
+## Composition with TypeScript functions
 
 Piper should support three levels of composition:
 
 1. **Core primitives** such as `step`, `parallel`, `repeat`, `policy`, and `evaluate`
-2. **Blocks** that package reusable orchestration patterns without hiding control flow
+2. **Functions** that package reusable orchestration patterns without hiding control flow
 3. **Recipes** that assemble full end-to-end loops for common workflows
 
-Today, teams can define blocks as normal TypeScript functions. See
-`examples/composition-blocks.piper.ts` for that pattern. A future blocks API could
-make those patterns first-class:
+Teams define reusable loop pieces as normal TypeScript functions. See
+`examples/composition-functions.piper.ts` for a larger example.
 
 ```ts
-import { artifact, block, evaluate, loop, parallel, repeat, step } from "@beyland/piper";
+import { artifact, evaluate, loop, repeat, step, type LoopTree } from "@beyland/piper";
 
 const plan = artifact("plan", "plan");
-const apiChange = artifact("api-change", "implementation");
-const uiChange = artifact("ui-change", "implementation");
 
-const sharedPlan = block("sharedPlan", ({ goal, output }) =>
-	step({
-		role: "planner",
-		goal,
-		produces: output,
-	}),
-);
+function sharedPlan({ goal, children }: { goal: string; children: LoopTree }) {
+	return loop(
+		step({
+			role: "planner",
+			goal,
+			produces: plan,
+		}),
+		children,
+	);
+}
 
-const testRepair = block("testRepair", ({ command, children }) =>
-	repeat(
+function repairUntilTestsPass({ command, children }: { command: string; children: LoopTree }) {
+	return repeat(
 		{ maxAttempts: 3, until: [command] },
 		children,
 		evaluate({
@@ -133,55 +131,31 @@ const testRepair = block("testRepair", ({ command, children }) =>
 			using: command,
 			feedback: "Revise only the changes from this loop.",
 		}),
-	),
-);
+	);
+}
 
-export default loop(
-	{ objective: "Improve checkout reliability" },
-	sharedPlan({
-		goal: "Plan API and UI slices",
-		output: plan,
-	}),
-	testRepair({
+export default sharedPlan({
+	goal: "Plan the checkout reliability change",
+	children: repairUntilTestsPass({
 		command: "pnpm test -- checkout",
-		children: parallel(
-			step({
-				role: "implementer",
-				goal: "Implement the API slice",
-				context: [plan],
-				produces: apiChange,
-			}),
-			step({
-				role: "implementer",
-				goal: "Implement the UI slice",
-				context: [plan],
-				produces: uiChange,
-			}),
-		),
+		children: step({
+			role: "implementer",
+			goal: "Implement the planned checkout change",
+			context: [plan],
+		}),
 	}),
-);
+});
 ```
 
-Possible first-party block surfaces:
-
-- `block(name, builder)` — names a reusable subgraph for previewing, tracing, docs, and reuse
-- `sequence(...children)` — groups ordered work without creating a full recipe
-- `fanOut({ from, into, using })` — maps one artifact into parallel downstream slices
-- `repairUntil({ command | check, attempts }, child)` — wraps implementation plus evaluator feedback
-- `reviewBoundary({ protectedFiles, reviewers }, child)` — adds policy and review gates around risky work
-- `handoff({ from, to, artifact, instructions })` — makes agent-to-agent transfer explicit
-- `bundle({ artifacts, summary })` — packages multiple outputs into a named reviewable artifact
-
-Blocks should remain transparent: they compile to the same loop tree as core
-primitives, preserve artifacts and policies, and can be previewed or inlined by
-the CLI.
+Composition functions should remain transparent: they return the same loop tree as
+core primitives, preserve artifacts and policies, and can be previewed by the CLI.
 
 ## Run with the CLI
 
 ```bash
-piper examples/simple-task.piper.ts --workspace .
-piper examples/simple-task.piper.ts --dry-run
-piper examples/simple-task.piper.ts --print-compiled
+piper examples/simple-loop.piper.ts --workspace .
+piper examples/simple-loop.piper.ts --dry-run
+piper examples/simple-loop.piper.ts --print-compiled
 ```
 
 Generate an inspectable loop file from a prompt:
@@ -204,13 +178,13 @@ Use `--harness <name>` to choose the authoring harness. It defaults to `copilot`
 Command templates can use `{goal}`, `{model}`, `{context}`, `{workspacePath}`, `{prompt}`, `{retryReason}`, `{attempt}`, `{constraints}`, and `{protectedFiles}`.
 
 ```bash
-COPILOT_COMMAND_TEMPLATE='copilot -p {prompt}' pnpm exec piper examples/simple-task.piper.ts --workspace .
+COPILOT_COMMAND_TEMPLATE='copilot -p {prompt}' pnpm exec piper examples/simple-loop.piper.ts --workspace .
 ```
 
 The `copilot` harness can also use VS Code Agent Host Protocol:
 
 ```bash
-PIPER_COPILOT_HARNESS=ahp pnpm exec piper examples/simple-task.piper.ts --workspace .
+PIPER_COPILOT_HARNESS=ahp pnpm exec piper examples/simple-loop.piper.ts --workspace .
 ```
 
 ## SDK usage

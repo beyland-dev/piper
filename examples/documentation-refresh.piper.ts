@@ -24,7 +24,7 @@ export default function documentationRefreshLoop() {
 			}),
 			step({
 				role: "docs auditor",
-				goal: "Review examples for missing workflows that should accompany the change.",
+				goal: "Review examples for missing loops that should accompany the change.",
 				produces: examplesInventory,
 			}),
 		),

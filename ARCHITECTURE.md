@@ -31,7 +31,7 @@ Piper programs are loop systems:
 9. `compare` records branch tradeoffs.
 10. `gate` and `policy` enforce approval and guardrail boundaries.
 
-The important shift is that Piper elevates feedback loops over task trees.
+The important shift is that Piper elevates feedback loops over one-off prompts.
 
 ## Runtime flow
 
@@ -52,9 +52,9 @@ Generation is still an authoring helper: Piper asks a harness to write a `.piper
 
 Harnesses implement this contract:
 
-1. `startTask` receives goal, context, constraints, protected files, workspace path, and optional model.
+1. `startStep` receives goal, context, constraints, protected files, workspace path, and optional model.
 2. The harness streams progress.
-3. It resolves with output, modified files, and metadata, or rejects with a task error.
+3. It resolves with output, modified files, and metadata, or rejects with a step error.
 4. It supports retry and cancel.
 
 Piper does not know how Copilot, Pi, Claude, Codex, or another agent thinks. It only coordinates the surrounding loop.

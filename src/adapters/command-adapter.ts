@@ -1,16 +1,16 @@
 import type {
 	HarnessAdapter,
 	ProgressUpdate,
-	TaskError,
-	TaskHandle,
-	TaskResult,
+	StepError,
+	StepHandle,
+	StepResult,
 } from "../core/types.js";
 import { listModifiedFiles } from "../runtime/constraint-checker.js";
 import { AsyncQueue } from "../utils/async-queue.js";
 import { createDeferred } from "../utils/deferred.js";
 import { spawnStreamingCommand } from "../utils/process.js";
 import { fillTemplate, shellEscape } from "../utils/shell.js";
-import { ManagedTaskHandle } from "./task-handle.js";
+import { ManagedStepHandle } from "./step-handle.js";
 
 export interface CommandHarnessOptions {
 	command?: string;
@@ -25,7 +25,7 @@ interface CommandHarnessConfig {
 	envPrefix: string;
 }
 
-interface CommandTaskState {
+interface CommandStepState {
 	goal: string;
 	model?: string;
 	context: string[];
@@ -54,7 +54,7 @@ export class CommandHarness implements HarnessAdapter {
 
 	private readonly config: CommandHarnessConfig;
 	private readonly options: CommandHarnessOptions;
-	private readonly state = new WeakMap<ManagedTaskHandle, CommandTaskState>();
+	private readonly state = new WeakMap<ManagedStepHandle, CommandStepState>();
 
 	constructor(config: CommandHarnessConfig, options: CommandHarnessOptions = {}) {
 		this.config = config;
@@ -62,15 +62,15 @@ export class CommandHarness implements HarnessAdapter {
 		this.options = options;
 	}
 
-	startTask(params: {
+	startStep(params: {
 		goal: string;
 		model?: string;
 		context: string[];
 		constraints?: string[];
 		protectedFiles?: string[];
 		workspacePath: string;
-	}): TaskHandle {
-		const handle = new ManagedTaskHandle();
+	}): StepHandle {
+		const handle = new ManagedStepHandle();
 		this.state.set(handle, {
 			...params,
 			constraints: params.constraints ?? [],
@@ -81,15 +81,15 @@ export class CommandHarness implements HarnessAdapter {
 		return handle;
 	}
 
-	retry(taskHandle: TaskHandle, failures: string[]): void {
-		this.runAttempt(taskHandle as ManagedTaskHandle, failures);
+	retry(stepHandle: StepHandle, failures: string[]): void {
+		this.runAttempt(stepHandle as ManagedStepHandle, failures);
 	}
 
-	cancel(taskHandle: TaskHandle): void {
-		(taskHandle as ManagedTaskHandle).cancel();
+	cancel(stepHandle: StepHandle): void {
+		(stepHandle as ManagedStepHandle).cancel();
 	}
 
-	private buildCommand(state: CommandTaskState, attempt: number, failures: string[]): string {
+	private buildCommand(state: CommandStepState, attempt: number, failures: string[]): string {
 		const { goal, model = "", context, workspacePath } = state;
 		const prompt = defaultPrompt(goal, context, failures);
 		if (this.options.commandTemplate) {
@@ -112,7 +112,7 @@ export class CommandHarness implements HarnessAdapter {
 	}
 
 	private buildEnvironment(
-		state: CommandTaskState,
+		state: CommandStepState,
 		attempt: number,
 		failures: string[],
 	): Record<string, string> {
@@ -143,17 +143,17 @@ export class CommandHarness implements HarnessAdapter {
 		};
 	}
 
-	private runAttempt(handle: ManagedTaskHandle, failures: string[]): void {
+	private runAttempt(handle: ManagedStepHandle, failures: string[]): void {
 		const state = this.state.get(handle);
 		if (!state) {
-			throw new Error(`Unknown ${this.config.name} task handle`);
+			throw new Error(`Unknown ${this.config.name} step handle`);
 		}
 
 		state.attempt += 1;
 		const attempt = state.attempt;
 		const progress = new AsyncQueue<ProgressUpdate>();
-		const completed = createDeferred<TaskResult>();
-		const errored = createDeferred<TaskError>();
+		const completed = createDeferred<StepResult>();
+		const errored = createDeferred<StepError>();
 		let canceled = false;
 		let run: ReturnType<typeof spawnStreamingCommand> | undefined;
 
@@ -175,7 +175,7 @@ export class CommandHarness implements HarnessAdapter {
 				if (canceled) {
 					progress.close();
 					errored.resolve({
-						message: `${this.config.name} task canceled`,
+						message: `${this.config.name} step canceled`,
 						retryable: false,
 					});
 					return;
@@ -209,7 +209,7 @@ export class CommandHarness implements HarnessAdapter {
 
 				if (canceled) {
 					errored.resolve({
-						message: `${this.config.name} task canceled`,
+						message: `${this.config.name} step canceled`,
 						logs: [result.stdout, result.stderr].filter(Boolean).join("\n"),
 						modifiedFiles,
 						retryable: false,
@@ -239,7 +239,7 @@ export class CommandHarness implements HarnessAdapter {
 				progress.close();
 				errored.resolve({
 					message:
-						error instanceof Error ? error.message : `${this.config.name} task failed unexpectedly`,
+						error instanceof Error ? error.message : `${this.config.name} step failed unexpectedly`,
 					logs: error instanceof Error ? error.stack : String(error),
 					retryable: false,
 				});

@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	PiperCancellationError,
 	PiperOrchestrator,
-	task,
-	workflow,
+	loop,
+	step,
 	type HarnessAdapter,
 	type ProgressUpdate,
-	type TaskError,
-	type TaskHandle,
-	type TaskResult,
+	type StepError,
+	type StepHandle,
+	type StepResult,
 } from "../src/index.js";
 
 async function* emptyProgress(): AsyncGenerator<ProgressUpdate> {}
@@ -20,22 +20,22 @@ async function* neverProgress(): AsyncGenerator<ProgressUpdate> {
 	await new Promise<void>(() => undefined);
 }
 
-function completedHandle(output: string): TaskHandle {
+function completedHandle(output: string): StepHandle {
 	return {
 		progress: emptyProgress(),
 		completed: Promise.resolve({
 			output,
 			modifiedFiles: [],
 		}),
-		errored: new Promise<TaskError>(() => undefined),
+		errored: new Promise<StepError>(() => undefined),
 	};
 }
 
-function neverHandle(): TaskHandle {
+function neverHandle(): StepHandle {
 	return {
 		progress: neverProgress(),
-		completed: new Promise<TaskResult>(() => undefined),
-		errored: new Promise<TaskError>(() => undefined),
+		completed: new Promise<StepResult>(() => undefined),
+		errored: new Promise<StepError>(() => undefined),
 	};
 }
 
@@ -46,14 +46,14 @@ class CancellationHarness implements HarnessAdapter {
 
 	private readonly startedWaiters = new Map<string, () => void>();
 
-	startTask(params: {
+	startStep(params: {
 		goal: string;
 		model?: string;
 		context: string[];
 		constraints: string[];
 		protectedFiles: string[];
 		workspacePath: string;
-	}): TaskHandle {
+	}): StepHandle {
 		this.startedGoals.push(params.goal);
 		this.startedWaiters.get(params.goal)?.();
 
@@ -90,7 +90,7 @@ describe("cancellation", () => {
 		);
 	});
 
-	it("cancels active task handles and persists completed artifacts", async () => {
+	it("cancels active step handles and persists completed artifacts", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cancel-"));
 		const outputRoot = await mkdtemp(join(tmpdir(), "piper-cancel-runs-"));
 		directories.push(workspacePath, outputRoot);
@@ -99,7 +99,7 @@ describe("cancellation", () => {
 		const orchestrator = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [harness],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: {
 				rootDir: outputRoot,
 				runId: "cancelled-run",
@@ -107,9 +107,10 @@ describe("cancellation", () => {
 		});
 
 		const execution = orchestrator.execute(
-			workflow(
-				task({ goal: "Prepare", harness: "cancel-test", artifact: "prepared" }),
-				task({ goal: "Hang", harness: "cancel-test", artifact: "pending" }),
+			loop(
+				{ objective: "Cancel active steps" },
+				step({ goal: "Prepare", harness: "cancel-test", produces: "prepared" }),
+				step({ goal: "Hang", harness: "cancel-test", produces: "pending" }),
 			),
 		);
 
@@ -124,14 +125,14 @@ describe("cancellation", () => {
 			await readFile(join(outputRoot, "cancelled-run", "artifacts.json"), "utf8"),
 		) as {
 			artifacts: Record<string, { output: string }>;
-			summary: { completedTasks: number; failedTasks: number };
+			summary: { completedSteps: number; failedSteps: number };
 		};
 
 		expect(persisted.artifacts.prepared.output).toBe("Prepared artifact");
 		expect(persisted.artifacts.pending).toBeUndefined();
 		expect(persisted.summary).toMatchObject({
-			completedTasks: 1,
-			failedTasks: 0,
+			completedSteps: 1,
+			failedSteps: 0,
 		});
 	});
 });

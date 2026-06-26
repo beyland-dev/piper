@@ -2,9 +2,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MockHarness, PiperOrchestrator, recover, task } from "../src/index.js";
+import { MockHarness, PiperOrchestrator, repeat, step } from "../src/index.js";
 
-describe("Recover", () => {
+describe("repeat", () => {
 	const directories: string[] = [];
 
 	afterEach(async () => {
@@ -13,16 +13,16 @@ describe("Recover", () => {
 		);
 	});
 
-	it("runs fallback recovery work and retries the failed branch", async () => {
-		const workspacePath = await mkdtemp(join(tmpdir(), "piper-recover-"));
+	it("runs fallback work and retries the failed branch", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-repeat-"));
 		directories.push(workspacePath);
 
-		// resolveBehavior tracks global starts so the second invocation of "Unstable task"
-		// (triggered by Recover's retry) succeeds even though each new handle starts at attempt 1.
+		// resolveBehavior tracks global starts so the second invocation of "Unstable step"
+		// succeeds even though each new handle starts at attempt 1.
 		let unstableStarts = 0;
 		const adapter = new MockHarness({
 			resolveBehavior: ({ goal }) => {
-				if (goal === "Unstable task") {
+				if (goal === "Unstable step") {
 					unstableStarts += 1;
 					return unstableStarts === 1
 						? { failOnAttempt: 1, output: "Recovered result" }
@@ -31,7 +31,7 @@ describe("Recover", () => {
 				return undefined;
 			},
 			behaviors: {
-				"Recovery task": {
+				"Recovery step": {
 					output: "Recovery complete",
 				},
 			},
@@ -40,26 +40,26 @@ describe("Recover", () => {
 		const executor = new PiperOrchestrator({
 			workspacePath,
 			harnesses: [adapter],
-			taskRetryLimit: 0,
+			stepRetryLimit: 0,
 			artifactStorage: false,
 		});
 
 		const summary = await executor.execute(
-			recover(
+			repeat(
 				{
-					maxRetries: 1,
+					maxAttempts: 2,
 					onFailure: (_error, retry) =>
-						task({
-							goal: "Recovery task",
+						step({
+							goal: "Recovery step",
 							harness: "mock",
-							"on:complete": () => retry(),
+							onComplete: () => retry(),
 						}),
 				},
-				task({ goal: "Unstable task", harness: "mock", artifact: "result" }),
+				step({ goal: "Unstable step", harness: "mock", produces: "result" }),
 			),
 		);
 
 		expect(summary.artifacts.result).toBe("Recovered result");
-		expect(adapter.history.filter((entry) => entry.goal === "Unstable task")).toHaveLength(2);
+		expect(adapter.history.filter((entry) => entry.goal === "Unstable step")).toHaveLength(2);
 	});
 });
