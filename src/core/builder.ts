@@ -205,6 +205,12 @@ export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]):
 	};
 }
 
+/**
+ * Maps a source artifact into parallel downstream slice tasks.
+ *
+ * `using` can be a shared goal prefix for generated steps, or a callback that
+ * returns a custom task tree for each slice.
+ */
 export function fanOut(options: FanOutProps): ParallelNode {
 	const fromContext = fanOutSourceContext(options.from);
 	const children = options.into.flatMap((slice, index) => {
