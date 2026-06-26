@@ -208,8 +208,20 @@ export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]):
 /**
  * Maps a source artifact into parallel downstream slice tasks.
  *
- * `using` can be a shared goal prefix for generated steps, or a callback that
- * returns a custom task tree for each slice.
+ * @param options.from - Artifact whose value is passed to every generated slice.
+ * @param options.into - Artifact targets, or per-slice task options, to produce in parallel.
+ * @param options.using - Shared goal prefix for generated steps, or a callback that returns a custom task tree for each slice.
+ * @returns A transparent parallel node containing the generated slice task trees.
+ *
+ * @example
+ * fanOut({ from: plan, into: [apiChange, uiChange], using: "Implement slice" })
+ *
+ * @example
+ * fanOut({
+ *   from: plan,
+ *   into: [apiChange, uiChange],
+ *   using: ({ name, artifact }) => task({ goal: `Implement ${name}`, produces: artifact }),
+ * })
  */
 export function fanOut(options: FanOutProps): ParallelNode {
 	const fromContext = fanOutSourceContext(options.from);

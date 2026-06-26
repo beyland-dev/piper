@@ -21,7 +21,7 @@ describe("fanOut and workflow", () => {
 			behaviors: {
 				"Create shared plan": { output: "Plan artifact" },
 				"Implement slice: api-change": { output: "API implementation" },
-				"Implement UI slice": { output: "UI implementation" },
+				"Implement slice: ui-change": { output: "UI implementation" },
 			},
 		});
 		const executor = new PiperOrchestrator({
@@ -36,7 +36,7 @@ describe("fanOut and workflow", () => {
 				task({ goal: "Create shared plan", harness: "mock", produces: "plan" }),
 				fanOut({
 					from: "plan",
-					into: [apiChange, { name: "ui-change", goal: "Implement UI slice" }],
+					into: [apiChange, "ui-change"],
 					using: "Implement slice",
 					harness: "mock",
 					status: "Implementing slices from plan...",
@@ -50,9 +50,9 @@ describe("fanOut and workflow", () => {
 		expect(
 			adapter.history.find((entry) => entry.goal === "Implement slice: api-change")?.context,
 		).toContain("Plan artifact");
-		expect(adapter.history.find((entry) => entry.goal === "Implement UI slice")?.context).toContain(
-			"Plan artifact",
-		);
+		expect(
+			adapter.history.find((entry) => entry.goal === "Implement slice: ui-change")?.context,
+		).toContain("Plan artifact");
 	});
 
 	it("keeps workflow as ordered grouping for task trees", async () => {
