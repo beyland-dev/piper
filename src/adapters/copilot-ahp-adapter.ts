@@ -1,12 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type {
-	HarnessAdapter,
-	ProgressUpdate,
-	TaskError,
-	TaskHandle,
-	TaskResult,
-} from "../core/types.js";
-import { listModifiedFiles } from "../runtime/constraint-checker.js";
 import {
 	AhpClient,
 	type AhpActionEnvelope,
@@ -16,6 +8,14 @@ import {
 	fileUri,
 	githubCliTokenProvider,
 } from "../ahp/client.js";
+import type {
+	HarnessAdapter,
+	ProgressUpdate,
+	TaskError,
+	TaskHandle,
+	TaskResult,
+} from "../core/types.js";
+import { listModifiedFiles } from "../runtime/constraint-checker.js";
 import { AsyncQueue } from "../utils/async-queue.js";
 import { createDeferred } from "../utils/deferred.js";
 import { defaultPrompt } from "./command-adapter.js";
@@ -29,12 +29,16 @@ export interface CopilotAhpHarnessOptions {
 	codeCommand?: string;
 	autoStartAgentHost?: boolean;
 	provider?: string;
-	tokenProvider?: (resources: ProtectedResourceMetadata[]) => Promise<readonly AhpAuthenticationToken[]>;
+	tokenProvider?: (
+		resources: ProtectedResourceMetadata[],
+	) => Promise<readonly AhpAuthenticationToken[]>;
 	connect?: (options: {
 		address?: string;
 		codeCommand?: string;
 		autoStartAgentHost?: boolean;
-		tokenProvider: (resources: ProtectedResourceMetadata[]) => Promise<readonly AhpAuthenticationToken[]>;
+		tokenProvider: (
+			resources: ProtectedResourceMetadata[],
+		) => Promise<readonly AhpAuthenticationToken[]>;
 	}) => Promise<AhpClient>;
 }
 
@@ -49,9 +53,7 @@ interface CopilotAhpTaskState {
 export class CopilotAhpHarness implements HarnessAdapter {
 	readonly name: string;
 
-	private readonly options: Required<
-		Pick<CopilotAhpHarnessOptions, "provider" | "tokenProvider">
-	> &
+	private readonly options: Required<Pick<CopilotAhpHarnessOptions, "provider" | "tokenProvider">> &
 		Omit<CopilotAhpHarnessOptions, "name" | "provider" | "tokenProvider">;
 	private readonly state = new WeakMap<ManagedTaskHandle, CopilotAhpTaskState>();
 
@@ -193,10 +195,7 @@ export class CopilotAhpHarness implements HarnessAdapter {
 			} catch (error) {
 				progress.close();
 				errored.resolve({
-					message:
-						error instanceof Error
-							? error.message
-							: "copilot AHP task failed unexpectedly",
+					message: error instanceof Error ? error.message : "copilot AHP task failed unexpectedly",
 					logs: error instanceof Error ? error.stack : String(error),
 					retryable: !canceled,
 				});

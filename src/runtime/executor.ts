@@ -257,6 +257,10 @@ function createRunId(): string {
 	return `${timestamp}-${random}`;
 }
 
+function attemptLabel(count: number): string {
+	return `${count} ${count === 1 ? "attempt" : "attempts"}`;
+}
+
 class EvaluationFailure extends Error {
 	readonly feedback: string[];
 
@@ -768,7 +772,7 @@ export class PiperOrchestrator {
 				}
 
 				const error: TaskError = {
-					message: `Step failed after ${attempt} attempts.`,
+					message: `Step failed after ${attemptLabel(attempt)}.`,
 					logs: allFailures.join("\n\n"),
 					modifiedFiles: result.modifiedFiles,
 					retryable: false,
@@ -920,7 +924,7 @@ export class PiperOrchestrator {
 		}
 
 		throw {
-			message: `Repeat loop exhausted ${maxAttempts} attempt(s).`,
+			message: `Repeat loop exhausted ${attemptLabel(maxAttempts)}.`,
 			logs: latestFailures.join("\n\n"),
 			retryable: false,
 		} satisfies TaskError;

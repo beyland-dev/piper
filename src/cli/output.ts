@@ -133,7 +133,7 @@ export class CliReporter implements RuntimeHooks {
 	}
 
 	event(event: RunEvent): void {
-		if (!this.verbose || !event.type.startsWith("feedback")) {
+		if (!this.verbose || event.type !== "feedback") {
 			return;
 		}
 

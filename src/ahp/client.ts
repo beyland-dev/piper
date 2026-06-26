@@ -1,6 +1,6 @@
+import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { Buffer } from "node:buffer";
 import { pathToFileURL } from "node:url";
 import { AsyncQueue } from "../utils/async-queue.js";
 
@@ -88,7 +88,9 @@ export interface AhpClientOptions {
 	codeCommand?: string;
 	autoStartAgentHost?: boolean;
 	webSocketFactory?: WebSocketFactory;
-	tokenProvider?: (resources: ProtectedResourceMetadata[]) => Promise<readonly AhpAuthenticationToken[]>;
+	tokenProvider?: (
+		resources: ProtectedResourceMetadata[],
+	) => Promise<readonly AhpAuthenticationToken[]>;
 }
 
 export interface AhpAuthenticationToken {
@@ -170,7 +172,9 @@ export class AhpClient {
 	async requestWithAuth<T>(
 		method: string,
 		params: unknown,
-		tokenProvider: (resources: ProtectedResourceMetadata[]) => Promise<readonly AhpAuthenticationToken[]>,
+		tokenProvider: (
+			resources: ProtectedResourceMetadata[],
+		) => Promise<readonly AhpAuthenticationToken[]>,
 	): Promise<T> {
 		try {
 			return await this.request<T>(method, params);
@@ -181,7 +185,9 @@ export class AhpClient {
 
 			const resources = readProtectedResources(error.data);
 			if (resources.length === 0) {
-				throw new Error("AHP authentication required, but the server did not advertise protected resources.");
+				throw new Error(
+					"AHP authentication required, but the server did not advertise protected resources.",
+				);
 			}
 
 			const tokens = await tokenProvider(resources);
@@ -276,7 +282,8 @@ export class AhpClient {
 	}
 
 	private handleSocketError(event: unknown): void {
-		const error = event instanceof Error ? event : new Error(`AHP WebSocket error: ${String(event)}`);
+		const error =
+			event instanceof Error ? event : new Error(`AHP WebSocket error: ${String(event)}`);
 		this.rejectPending(error);
 	}
 
@@ -297,7 +304,9 @@ export async function resolveAgentHostAddress(params: {
 		return params.address;
 	}
 	if (params.autoStart === false) {
-		throw new Error("Missing AHP address. Set COPILOT_AHP_ADDRESS or enable agent host auto-start.");
+		throw new Error(
+			"Missing AHP address. Set COPILOT_AHP_ADDRESS or enable agent host auto-start.",
+		);
 	}
 
 	const command = params.codeCommand ?? "code";
@@ -313,7 +322,9 @@ export async function resolveAgentHostAddress(params: {
 
 export function extractAgentHostAddress(output: string): string | undefined {
 	const withoutAnsi = output.replace(/\x1b\[[0-9;]*m/g, "");
-	return withoutAnsi.match(/ws:\/\/(?:localhost|127\.0\.0\.1|\[[^\]]+\]|[^\s]+):\d+(?:\?tkn=[^\s]+)?/)?.[0];
+	return withoutAnsi.match(
+		/ws:\/\/(?:localhost|127\.0\.0\.1|\[[^\]]+\]|[^\s]+):\d+(?:\?tkn=[^\s]+)?/,
+	)?.[0];
 }
 
 export function buildDefaultChatUri(sessionUri: string): string {
