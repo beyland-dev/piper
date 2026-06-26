@@ -15,15 +15,15 @@
 		"typescript",
 		"workflow"
 	],
-	"homepage": "https://github.com/hawkticehurst/piper#readme",
+	"homepage": "https://github.com/beyland-dev/piper#readme",
 	"bugs": {
-		"url": "https://github.com/hawkticehurst/piper/issues"
+		"url": "https://github.com/beyland-dev/piper/issues"
 	},
 	"license": "MIT",
 	"author": "Hawk Ticehurst",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/hawkticehurst/piper.git"
+		"url": "git+https://github.com/beyland-dev/piper.git"
 	},
 	"bin": {
 		"piper": "dist/cli/index.js"

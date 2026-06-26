@@ -97,7 +97,7 @@ Recipes are plain loop builders, so they can be composed with lower-level primit
 
 ## Composition with TypeScript functions
 
-Piper should support three levels of composition:
+Piper supports three levels of composition:
 
 1. **Core primitives** such as `step`, `parallel`, `repeat`, `policy`, and `evaluate`
 2. **Functions** that package reusable orchestration patterns without hiding control flow
@@ -147,7 +147,7 @@ export default sharedPlan({
 });
 ```
 
-Composition functions should remain transparent: they return the same loop tree as
+Composition functions remain transparent: they return the same loop tree as
 core primitives, preserve artifacts and policies, and can be previewed by the CLI.
 
 ## Run with the CLI
