@@ -628,6 +628,11 @@ export class PiperOrchestrator {
 	}
 
 	private registerActiveTask(handle: TaskHandle, harness: HarnessAdapter): () => void {
+		if (this.cancellationState.error) {
+			harness.cancel(handle);
+			throw this.cancellationState.error;
+		}
+
 		this.activeTasks.set(handle, { harness });
 		return () => {
 			this.activeTasks.delete(handle);

@@ -67,7 +67,7 @@ export class CliReporter implements RuntimeHooks {
 	}
 
 	stepStarted(info: StepAttemptInfo): void {
-		const metadata = [`step=${info.id}`, `harness=${info.harness}`, `attempt=${info.attempt}`];
+		const metadata = [`id=${info.id}`, `harness=${info.harness}`, `attempt=${info.attempt}`];
 		if (info.role) {
 			metadata.push(`role=${info.role}`);
 		}
