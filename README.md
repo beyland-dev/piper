@@ -6,13 +6,8 @@ It does not replace Copilot, Claude, Codex, Pi, Cursor, or other agents. It coor
 
 > Design loops, not prompts.
 
-If web frameworks like React provide component primitives, meta frameworks like
-Next.js or Remix provide the application harness around those primitives: routing,
-data loading, mutation flows, deployment assumptions, and conventions for how
-work moves through the system. Piper aims to play a similar role for coding
-agents. It does not replace the underlying agent; it gives agent work a durable
-framework for orchestration, state, artifacts, quality gates, retries, and
-handoffs.
+Piper gives coding-agent work the structure application frameworks give UI:
+orchestration, state, artifacts, gates, retries, and handoffs.
 
 ## Install
 
@@ -96,6 +91,17 @@ Piper ships high-level recipes for common agent systems:
 - `releaseTrain`
 
 Recipes are plain loop builders, so they can be composed with lower-level primitives.
+
+## Composition
+
+Piper programs can mix three layers:
+
+1. Core primitives such as `step`, `parallel`, `repeat`, `policy`, and `evaluate`
+2. Reusable blocks that package common orchestration patterns for your team
+3. High-level recipes for common end-to-end loops
+
+See `examples/composition-blocks.piper.ts` for a compact example of building
+team-specific blocks above the core primitives and composing them into one loop.
 
 ## Run with the CLI
 
