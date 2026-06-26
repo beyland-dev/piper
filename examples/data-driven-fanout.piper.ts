@@ -22,11 +22,9 @@ function formatSlices(slices: FeatureSlice[]): string {
 }
 
 const slices = loadPrioritizedSlices();
-const sliceInventory = input(
-	"prioritized-slices",
-	() => formatSlices(slices),
-	{ description: "prioritized feature slice inventory" },
-);
+const sliceInventory = input("prioritized-slices", () => formatSlices(slices), {
+	description: "prioritized feature slice inventory",
+});
 const plan = artifact("slice-plan", "plan");
 
 export default loop(
