@@ -1,8 +1,8 @@
-import type { TaskElement, TaskProps } from "./types.js";
+import { step } from "./builder.js";
+import type { StepNode, StepProps } from "./types.js";
 
-export function Task(props: TaskProps): TaskElement {
-	return {
-		kind: "task",
-		props,
-	};
+export function Step(props: StepProps): StepNode {
+	return step(props);
 }
+
+export const Task = Step;

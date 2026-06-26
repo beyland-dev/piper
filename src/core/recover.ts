@@ -1,13 +1,8 @@
-import { normalizeChildren } from "./node-utils.js";
-import type { RecoverNode, RecoverProps } from "./types.js";
+import { repeat } from "./builder.js";
+import type { RepeatNode, RepeatProps } from "./types.js";
 
-export function Recover(props: RecoverProps): RecoverNode {
-	return {
-		kind: "recover",
-		props: {
-			...props,
-			maxRetries: props.maxRetries ?? 3,
-			children: normalizeChildren(props.children),
-		},
-	};
+export function Repeat(props: RepeatProps): RepeatNode {
+	return repeat(props);
 }
+
+export const Recover = Repeat;

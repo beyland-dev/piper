@@ -13,7 +13,10 @@ type InternalRuntimeValue<T> = RuntimeValue<T> & {
 	readonly [RUNTIME_VALUE_MARKER]: true;
 };
 
-type InternalArtifact<Name extends string = string> = Artifact<Name> & {
+type InternalArtifact<Name extends string = string, Type extends string = string> = Artifact<
+	Name,
+	Type
+> & {
 	readonly [ARTIFACT_MARKER]: true;
 };
 
@@ -53,7 +56,10 @@ export function getArtifactName(artifact: string | Artifact): string {
 	return typeof artifact === "string" ? artifact : artifact.name;
 }
 
-export function artifact<Name extends string>(name: Name): Artifact<Name> {
+export function artifact<Name extends string, Type extends string = "artifact">(
+	name: Name,
+	type = "artifact" as Type,
+): Artifact<Name, Type> {
 	const value = createRuntimeValue(
 		`artifact value(${name})`,
 		(context) => context.readArtifact(name),
@@ -68,10 +74,11 @@ export function artifact<Name extends string>(name: Name): Artifact<Name> {
 	return {
 		kind: "artifact",
 		name,
+		type,
 		value: () => value,
 		result: () => result,
 		[ARTIFACT_MARKER]: true,
-	} as InternalArtifact<Name>;
+	} as InternalArtifact<Name, Type>;
 }
 
 export function runtimeValue<T>(

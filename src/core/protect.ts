@@ -1,12 +1,8 @@
-import { normalizeChildren } from "./node-utils.js";
-import type { ProtectNode, ProtectProps } from "./types.js";
+import { policy } from "./builder.js";
+import type { PolicyNode, PolicyProps } from "./types.js";
 
-export function Protect(props: ProtectProps): ProtectNode {
-	return {
-		kind: "protect",
-		props: {
-			...props,
-			children: normalizeChildren(props.children),
-		},
-	};
+export function Policy(props: PolicyProps): PolicyNode {
+	return policy(props);
 }
+
+export const Protect = Policy;

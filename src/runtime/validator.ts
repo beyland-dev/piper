@@ -1,9 +1,9 @@
 import { isRuntimeValue } from "../core/output.js";
-import type { RuntimeValueContext, ValidationValue } from "../core/types.js";
+import type { EvaluationValue, RuntimeValueContext } from "../core/types.js";
 import { runCommand } from "../utils/process.js";
 
 export async function runValidations(
-	validations: ValidationValue[] | undefined,
+	validations: EvaluationValue[] | undefined,
 	context: RuntimeValueContext,
 ): Promise<string[]> {
 	const failures: string[] = [];
@@ -25,14 +25,22 @@ export async function runValidations(
 			continue;
 		}
 
-		if (!isRuntimeValue(validation)) {
-			failures.push("Encountered an invalid validation runtime value.");
+		if (isRuntimeValue(validation)) {
+			const passed = await validation.resolve(context);
+			if (passed !== true) {
+				failures.push(`Runtime value validation failed: ${validation.description}`);
+			}
 			continue;
 		}
 
-		const passed = await validation.resolve(context);
+		const result = await validation(context);
+		const passed = typeof result === "boolean" ? result : result.passed;
 		if (passed !== true) {
-			failures.push(`Runtime value validation failed: ${validation.description}`);
+			failures.push(
+				typeof result === "boolean"
+					? "Function validation failed."
+					: result.feedback ?? "Function validation failed.",
+			);
 		}
 	}
 

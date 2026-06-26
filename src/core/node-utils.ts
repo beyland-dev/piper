@@ -1,15 +1,16 @@
-import type { TaskNode, TaskTree, WorkflowNode } from "./types.js";
+import type { ConcreteLoopNode, LoopTree, RootLoopNode } from "./types.js";
 
-export function createWorkflow(children: TaskNode[]): WorkflowNode {
+export function createLoop(children: ConcreteLoopNode[], objective = "Run Piper loop"): RootLoopNode {
 	return {
-		kind: "workflow",
+		kind: "loop",
 		props: {
+			objective,
 			children,
 		},
 	};
 }
 
-export function normalizeChildren(input: unknown): TaskNode[] {
+export function normalizeChildren(input: unknown): ConcreteLoopNode[] {
 	if (input == null || input === false) {
 		return [];
 	}
@@ -19,15 +20,19 @@ export function normalizeChildren(input: unknown): TaskNode[] {
 	}
 
 	if (typeof input === "string") {
-		return input.trim() === "" ? [] : [];
+		return [];
 	}
 
-	return [input as TaskNode];
+	return [input as ConcreteLoopNode];
 }
 
-export function normalizeTree(tree: TaskTree): TaskNode {
+export function normalizeTree(tree: LoopTree): ConcreteLoopNode {
 	if (Array.isArray(tree)) {
-		return createWorkflow(normalizeChildren(tree));
+		return createLoop(normalizeChildren(tree));
+	}
+
+	if (!tree) {
+		return createLoop([]);
 	}
 
 	return tree;

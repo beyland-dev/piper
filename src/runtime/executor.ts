@@ -10,32 +10,36 @@ import {
 import { normalizeTree } from "../core/node-utils.js";
 import { getArtifactName, isArtifact, isRuntimeValue } from "../core/output.js";
 import type {
-	HarnessAdapter,
+	ArtifactStorageOptions,
+	ConcreteLoopNode,
 	ContextValue,
+	EvaluationResult,
+	EvaluationValue,
 	ExecutionSummary,
 	ExecutorOptions,
-	ArtifactStorageOptions,
+	FeedbackRecord,
+	HarnessAdapter,
 	RuntimeHooks,
 	RuntimeValueContext,
-	TaskAttemptInfo,
+	StepAttemptInfo,
 	TaskError,
 	TaskHandle,
-	TaskNode,
 	TaskResult,
 	TaskTree,
 } from "../core/types.js";
+import { runCommand } from "../utils/process.js";
 import { captureGitSnapshot, enforceProtectedFiles } from "./constraint-checker.js";
-import { runValidations } from "./validator.js";
 
-const DEFAULT_PARALLEL_STATUS = "Running parallel tasks...";
+const DEFAULT_PARALLEL_STATUS = "Running parallel loop branches...";
 
 class NullHooks implements RuntimeHooks {
 	info(): void {}
-	taskStarted(): void {}
-	taskProgress(): void {}
-	taskRetry(): void {}
-	taskCompleted(): void {}
-	taskFailed(): void {}
+	stepStarted(): void {}
+	stepProgress(): void {}
+	stepRetry(): void {}
+	stepCompleted(): void {}
+	stepFailed(): void {}
+	event(): void {}
 	summary(): void {}
 }
 
@@ -72,36 +76,22 @@ class OutputStore {
 	private readonly outputWaiters = new Map<string, Waiter<string>[]>();
 	private readonly resultWaiters = new Map<string, Waiter<TaskResult>[]>();
 	private readonly declaredOutputs = new Set<string>();
-	private readonly pendingProducers = new Map<string, number>();
 	private readonly failures = new Map<string, Error>();
 
-	constructor(declarations: Map<string, number> = new Map()) {
-		this.declareAll(declarations);
-	}
-
-	declareAll(declarations: Map<string, number>): void {
-		for (const [name, count] of declarations) {
-			this.declare(name, count);
-		}
-	}
-
-	declare(name: string, count = 1): void {
-		if (count <= 0) {
-			return;
-		}
-
+	declare(name: string): void {
 		this.declaredOutputs.add(name);
-		this.pendingProducers.set(name, (this.pendingProducers.get(name) ?? 0) + count);
+	}
+
+	declareAll(names: Iterable<string>): void {
+		for (const name of names) {
+			this.declare(name);
+		}
 	}
 
 	set(name: string, result: TaskResult): void {
-		if (this.artifacts.has(name)) {
-			throw new Error(`Output "${name}" has already been produced.`);
-		}
-
+		this.declaredOutputs.add(name);
 		this.artifacts.set(name, result);
 		this.failures.delete(name);
-		this.pendingProducers.set(name, 0);
 
 		for (const waiter of this.outputWaiters.get(name) ?? []) {
 			waiter.resolve(result.output);
@@ -113,18 +103,13 @@ class OutputStore {
 		this.resultWaiters.delete(name);
 	}
 
-	fail(name: string, error = this.createTaskFailedError(name)): void {
-		if (!this.declaredOutputs.has(name) || this.artifacts.has(name) || this.failures.has(name)) {
+	fail(name: string, error = new Error(`Artifact "${name}" was not produced.`)): void {
+		if (!this.declaredOutputs.has(name) || this.artifacts.has(name)) {
 			return;
 		}
 
-		const remainingProducers = Math.max(0, (this.pendingProducers.get(name) ?? 0) - 1);
-		this.pendingProducers.set(name, remainingProducers);
-
-		if (remainingProducers === 0) {
-			this.failures.set(name, error);
-			this.rejectWaiters(name, error);
-		}
+		this.failures.set(name, error);
+		this.rejectWaiters(name, error);
 	}
 
 	closePending(reason?: unknown): void {
@@ -134,8 +119,8 @@ class OutputStore {
 			}
 
 			const error = reason
-				? this.createExecutionAbortedError(name)
-				: this.createNeverProducedError(name);
+				? new Error(`Artifact "${name}" was not produced because execution aborted.`)
+				: new Error(`Artifact "${name}" was declared but never produced.`);
 			this.failures.set(name, error);
 			this.rejectWaiters(name, error);
 		}
@@ -153,7 +138,9 @@ class OutputStore {
 		}
 
 		if (!this.declaredOutputs.has(name)) {
-			throw this.createUnknownOutputError(name);
+			throw new Error(
+				`Unknown artifact "${name}". Add a step or compare node with produces="${name}" before reading it.`,
+			);
 		}
 
 		return new Promise<string>((resolve, reject) => {
@@ -175,7 +162,9 @@ class OutputStore {
 		}
 
 		if (!this.declaredOutputs.has(name)) {
-			throw this.createUnknownOutputError(name);
+			throw new Error(
+				`Unknown artifact "${name}". Add a step or compare node with produces="${name}" before reading it.`,
+			);
 		}
 
 		return new Promise<TaskResult>((resolve, reject) => {
@@ -206,103 +195,29 @@ class OutputStore {
 		this.outputWaiters.delete(name);
 		this.resultWaiters.delete(name);
 	}
-
-	private createUnknownOutputError(name: string): Error {
-		return new Error(
-			`Unknown artifact "${name}". No task declares artifact="${name}". Add or fix artifact="${name}" on an upstream task.`,
-		);
-	}
-
-	private createTaskFailedError(name: string): Error {
-		return new Error(`Artifact "${name}" was not produced because its task failed.`);
-	}
-
-	private createExecutionAbortedError(name: string): Error {
-		return new Error(`Artifact "${name}" was not produced because execution aborted.`);
-	}
-
-	private createNeverProducedError(name: string): Error {
-		return new Error(`Artifact "${name}" was declared but never produced.`);
-	}
 }
 
-interface OutputGraph {
-	declarations: Map<string, number>;
-	references: Map<string, string[]>;
-}
-
-function addReference(references: Map<string, string[]>, name: string, description: string): void {
-	const existing = references.get(name) ?? [];
-	existing.push(description);
-	references.set(name, existing);
-}
-
-function collectContextReferences(
-	references: Map<string, string[]>,
-	values: unknown[] | undefined,
-	owner: string,
-): void {
-	for (const value of values ?? []) {
-		if (isArtifact(value)) {
-			addReference(references, value.name, `${owner} context`);
-			continue;
-		}
-
-		if (isRuntimeValue(value)) {
-			for (const dependency of value.dependencies) {
-				addReference(references, dependency, `${owner} runtime value "${value.description}"`);
-			}
-		}
-	}
-}
-
-function collectValidationReferences(
-	references: Map<string, string[]>,
-	values: unknown[] | undefined,
-	owner: string,
-): void {
-	for (const value of values ?? []) {
-		if (isRuntimeValue(value)) {
-			for (const dependency of value.dependencies) {
-				addReference(references, dependency, `${owner} validation "${value.description}"`);
-			}
-		}
-	}
-}
-
-function collectOutputGraph(node: TaskNode): OutputGraph {
-	const declarations = new Map<string, number>();
-	const references = new Map<string, string[]>();
-
-	const visit = (current: TaskNode): void => {
-		if (!current) {
-			return;
-		}
-
+function collectArtifactDeclarations(node: ConcreteLoopNode): string[] {
+	const names: string[] = [];
+	const visit = (current: ConcreteLoopNode): void => {
 		switch (current.kind) {
-			case "task":
-				if (current.props.artifact) {
-					const name = getArtifactName(current.props.artifact);
-					declarations.set(name, (declarations.get(name) ?? 0) + 1);
-				}
-				collectContextReferences(references, current.props.context, `task "${current.props.goal}"`);
-				collectValidationReferences(
-					references,
-					current.props.validate,
-					`task "${current.props.goal}"`,
-				);
-				return;
-			case "workflow":
-			case "protect":
-			case "recover":
-				for (const child of current.props.children) {
-					visit(child);
-				}
-				if (current.kind === "protect") {
-					collectValidationReferences(references, current.props.validate, "protect block");
+			case "step":
+				if (current.props.produces ?? current.props.artifact) {
+					names.push(getArtifactName((current.props.produces ?? current.props.artifact)!));
 				}
 				return;
+			case "compare":
+				if (current.props.produces) {
+					names.push(getArtifactName(current.props.produces));
+				}
+				for (const branch of current.props.branches) {
+					visit(branch.node);
+				}
+				return;
+			case "loop":
+			case "repeat":
 			case "parallel":
+			case "policy":
 				for (const child of current.props.children) {
 					visit(child);
 				}
@@ -313,34 +228,10 @@ function collectOutputGraph(node: TaskNode): OutputGraph {
 	};
 
 	visit(node);
-	return { declarations, references };
+	return names;
 }
 
-function validateOutputGraph(graph: OutputGraph): void {
-	const failures: string[] = [];
-
-	for (const [name, count] of graph.declarations) {
-		if (count > 1) {
-			failures.push(
-				`Artifact "${name}" is declared ${count} times. Each artifact must have exactly one producer.`,
-			);
-		}
-	}
-
-	for (const [name, locations] of graph.references) {
-		if (!graph.declarations.has(name)) {
-			failures.push(
-				`Artifact "${name}" is referenced by ${locations.join(", ")} but no task declares it.`,
-			);
-		}
-	}
-
-	if (failures.length > 0) {
-		throw new Error(`Invalid workflow:\n${failures.map((failure) => `- ${failure}`).join("\n")}`);
-	}
-}
-
-function toTaskError(error: unknown, fallbackMessage = "Task failed"): TaskError {
+function toTaskError(error: unknown, fallbackMessage = "Step failed"): TaskError {
 	if (typeof error === "object" && error !== null && "message" in error && "retryable" in error) {
 		return error as TaskError;
 	}
@@ -364,6 +255,16 @@ function createRunId(): string {
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const random = Math.random().toString(36).slice(2, 8);
 	return `${timestamp}-${random}`;
+}
+
+class EvaluationFailure extends Error {
+	readonly feedback: string[];
+
+	constructor(feedback: string[]) {
+		super(feedback.join("\n\n") || "Evaluation failed.");
+		this.name = "EvaluationFailure";
+		this.feedback = feedback;
+	}
 }
 
 export class PiperCancellationError extends Error {
@@ -395,10 +296,12 @@ class OutputPersistence {
 		this.artifactPath = join(this.runDirectory, "artifacts.json");
 	}
 
-	async write(
-		artifacts: Record<string, TaskResult>,
-		summary?: Omit<ExecutionSummary, "artifacts">,
-	): Promise<void> {
+	async write(params: {
+		artifacts: Record<string, TaskResult>;
+		feedback: FeedbackRecord[];
+		events: unknown[];
+		summary?: Omit<ExecutionSummary, "artifacts" | "feedback" | "events">;
+	}): Promise<void> {
 		await mkdir(this.runDirectory, { recursive: true });
 		await writeFile(
 			this.artifactPath,
@@ -407,8 +310,7 @@ class OutputPersistence {
 					runId: this.runId,
 					workspacePath: this.workspacePath,
 					updatedAt: new Date().toISOString(),
-					summary,
-					artifacts,
+					...params,
 				},
 				null,
 				2,
@@ -427,9 +329,13 @@ export class PiperOrchestrator {
 	private artifacts = new OutputStore();
 	private cancellationState = createCancellationState();
 	private readonly workspacePath: string;
-	private taskIndex = 0;
-	private completedTasks = 0;
-	private failedTasks = 0;
+	private stepIndex = 0;
+	private completedSteps = 0;
+	private failedSteps = 0;
+	private readonly feedback: FeedbackRecord[] = [];
+	private readonly events: ExecutionSummary["events"] = [];
+	private readonly state = new Map<string, unknown>();
+	private readonly agents = new Map<string, { harness?: string; model?: string; instructions?: string; constraints: readonly string[] }>();
 
 	constructor(options: ExecutorOptions) {
 		for (const harness of options.harnesses) {
@@ -437,7 +343,7 @@ export class PiperOrchestrator {
 		}
 
 		this.hooks = options.hooks ?? new NullHooks();
-		this.retryLimit = options.taskRetryLimit ?? 3;
+		this.retryLimit = options.stepRetryLimit ?? options.taskRetryLimit ?? 3;
 		this.workspacePath = options.workspacePath;
 		this.outputPersistence =
 			options.artifactStorage === false
@@ -451,9 +357,12 @@ export class PiperOrchestrator {
 		}
 
 		const normalizedTree = normalizeTree(tree);
-		const outputGraph = collectOutputGraph(normalizedTree);
-		validateOutputGraph(outputGraph);
-		this.artifacts = new OutputStore(outputGraph.declarations);
+		this.artifacts = new OutputStore();
+		this.artifacts.declareAll(collectArtifactDeclarations(normalizedTree));
+		this.feedback.length = 0;
+		this.events.length = 0;
+		this.state.clear();
+		this.agents.clear();
 		await this.persistOutputs();
 
 		try {
@@ -503,32 +412,62 @@ export class PiperOrchestrator {
 		await this.persistOutputs(this.createSummary());
 
 		if (cancelErrors.length > 0) {
-			throw new AggregateError(cancelErrors, "Failed to cancel one or more active tasks.");
+			throw new AggregateError(cancelErrors, "Failed to cancel one or more active steps.");
 		}
 	}
 
 	private createSummary(): ExecutionSummary {
 		return {
-			completedTasks: this.completedTasks,
-			failedTasks: this.failedTasks,
+			completedSteps: this.completedSteps,
+			failedSteps: this.failedSteps,
+			completedTasks: this.completedSteps,
+			failedTasks: this.failedSteps,
 			artifacts: this.artifacts.snapshot(),
+			feedback: [...this.feedback],
+			events: [...this.events],
 			runId: this.outputPersistence?.runId ?? null,
 			artifactPath: this.outputPersistence?.artifactPath ?? null,
 		};
 	}
 
 	private async persistOutputs(summary?: ExecutionSummary): Promise<void> {
-		await this.outputPersistence?.write(
-			this.artifacts.snapshotResults(),
-			summary
+		await this.outputPersistence?.write({
+			artifacts: this.artifacts.snapshotResults(),
+			feedback: this.feedback,
+			events: this.events,
+			summary: summary
 				? {
+						completedSteps: summary.completedSteps,
+						failedSteps: summary.failedSteps,
 						completedTasks: summary.completedTasks,
 						failedTasks: summary.failedTasks,
 						runId: summary.runId,
 						artifactPath: summary.artifactPath,
 					}
 				: undefined,
-		);
+		});
+	}
+
+	private recordEvent(event: Omit<ExecutionSummary["events"][number], "timestamp">): void {
+		const entry = { ...event, timestamp: Date.now() };
+		this.events.push(entry);
+		this.hooks.event(entry);
+	}
+
+	private addFeedback(params: Omit<FeedbackRecord, "id" | "timestamp">): FeedbackRecord {
+		const record: FeedbackRecord = {
+			id: `feedback-${this.feedback.length + 1}`,
+			timestamp: Date.now(),
+			...params,
+		};
+		this.feedback.push(record);
+		this.recordEvent({
+			type: "feedback",
+			message: record.message,
+			nodeId: record.source,
+			metadata: { severity: record.severity, scope: record.scope, iteration: record.iteration },
+		});
+		return record;
 	}
 
 	private createRuntimeValueContext(): RuntimeValueContext {
@@ -536,17 +475,23 @@ export class PiperOrchestrator {
 			workspacePath: this.workspacePath,
 			readArtifact: (name) => this.artifacts.waitForOutput(name),
 			readTaskResult: (name) => this.artifacts.waitForResult(name),
+			readState: <T = unknown>(name: string) => this.state.get(name) as T | undefined,
+			readFeedback: (scope) =>
+				scope ? this.feedback.filter((record) => record.scope === scope) : [...this.feedback],
 		};
 	}
 
 	private async resolveContext(values: ContextValue[] = []): Promise<string[]> {
 		const context = this.createRuntimeValueContext();
-
-		return this.cancelable(
+		const resolved = await this.cancelable(
 			Promise.all(
 				values.map(async (value) => {
 					if (typeof value === "string") {
 						return value;
+					}
+
+					if (isArtifact(value)) {
+						return value.value().resolve(context);
 					}
 
 					if (isRuntimeValue(value)) {
@@ -557,12 +502,84 @@ export class PiperOrchestrator {
 				}),
 			),
 		);
+
+		if (this.feedback.length === 0) {
+			return resolved;
+		}
+
+		return [
+			...resolved,
+			[
+				"Structured feedback from prior loop iterations:",
+				...this.feedback.map(
+					(record) =>
+						`- [${record.severity}] ${record.scope ? `${record.scope}: ` : ""}${record.message}`,
+				),
+			].join("\n"),
+		];
 	}
 
-	private async observeAttempt(handle: TaskHandle, info: TaskAttemptInfo): Promise<TaskResult> {
+	private async evaluateValue(value: EvaluationValue): Promise<EvaluationResult> {
+		if (typeof value === "string") {
+			const result = await runCommand(value, {
+				cwd: this.workspacePath,
+			});
+
+			return {
+				passed: result.exitCode === 0,
+				feedback:
+					result.exitCode === 0
+						? undefined
+						: [`Evaluation command failed: ${value}`, result.stdout, result.stderr]
+								.filter(Boolean)
+								.join("\n"),
+			};
+		}
+
+		if (isRuntimeValue(value)) {
+			const passed = await value.resolve(this.createRuntimeValueContext());
+			return {
+				passed: passed === true,
+				feedback: passed === true ? undefined : `Runtime evaluation failed: ${value.description}`,
+			};
+		}
+
+		const result = await value(this.createRuntimeValueContext());
+		if (typeof result === "boolean") {
+			return { passed: result, feedback: result ? undefined : "Evaluator returned false." };
+		}
+		return result;
+	}
+
+	private async runEvaluations(
+		values: EvaluationValue[] | undefined,
+		source: string,
+		scope?: string,
+	): Promise<string[]> {
+		const failures: string[] = [];
+
+		for (const value of values ?? []) {
+			const result = await this.evaluateValue(value);
+			if (!result.passed) {
+				const message = result.feedback ?? "Evaluation failed.";
+				failures.push(message);
+				this.addFeedback({
+					source,
+					scope,
+					message,
+					severity: "error",
+				});
+			}
+		}
+
+		return failures;
+	}
+
+	private async observeAttempt(handle: TaskHandle, info: StepAttemptInfo): Promise<TaskResult> {
 		const progressTask = (async () => {
 			for await (const update of handle.progress) {
-				this.hooks.taskProgress(info, update);
+				this.hooks.stepProgress(info, update);
+				this.hooks.taskProgress?.(info, update);
 			}
 		})();
 
@@ -585,20 +602,35 @@ export class PiperOrchestrator {
 		return outcome.result;
 	}
 
-	private async executeTask(
-		node: Extract<TaskNode, { kind: "task" }>,
+	private registerActiveTask(handle: TaskHandle, harness: HarnessAdapter): () => void {
+		this.activeTasks.set(handle, { harness });
+		return () => {
+			this.activeTasks.delete(handle);
+		};
+	}
+
+	private async executeStep(
+		node: Extract<ConcreteLoopNode, { kind: "step" }>,
 		scope: ConstraintScope,
 	): Promise<void> {
-		const harness = this.harnesses.get(node.props.harness);
+		const roleName = typeof node.props.role === "string" ? node.props.role : node.props.role?.name;
+		const inlineAgent = typeof node.props.role === "object" ? node.props.role : undefined;
+		const registeredAgent = roleName ? this.agents.get(roleName) : undefined;
+		const harnessName = node.props.harness ?? inlineAgent?.harness ?? registeredAgent?.harness;
+		if (!harnessName) {
+			throw new Error(`Step "${node.props.goal}" must specify a harness or use an agent with a harness.`);
+		}
+
+		const harness = this.harnesses.get(harnessName);
 		if (!harness) {
-			throw new Error(`No harness registered for "${node.props.harness}".`);
+			throw new Error(`No harness registered for "${harnessName}".`);
 		}
 
 		this.throwIfCancelled();
 
-		const taskId = `task-${++this.taskIndex}`;
-		const resolvedContext = await this.resolveContext(node.props.context);
-		const childScope = extendConstraintScope(scope, node.props.constraints);
+		const stepId = node.props.id ?? `step-${++this.stepIndex}`;
+		const agentConstraints = [...(inlineAgent?.constraints ?? []), ...(registeredAgent?.constraints ?? [])];
+		const childScope = extendConstraintScope(scope, [...agentConstraints, ...(node.props.constraints ?? [])]);
 		const maxAttempts = this.retryLimit + 1;
 		let taskHandle: TaskHandle | undefined;
 		let failures: string[] = [];
@@ -606,21 +638,40 @@ export class PiperOrchestrator {
 		for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 			this.throwIfCancelled();
 
-			const info: TaskAttemptInfo = {
-				id: taskId,
+			const model = node.props.model ?? inlineAgent?.model ?? registeredAgent?.model;
+			const info: StepAttemptInfo = {
+				id: stepId,
 				goal: node.props.goal,
-				harness: node.props.harness,
-				model: node.props.model,
+				role: roleName,
+				harness: harnessName,
+				model,
 				attempt,
 			};
 
 			const snapshot = await captureGitSnapshot(this.workspacePath);
-			this.hooks.taskStarted(info);
+			this.recordEvent({
+				type: "step:start",
+				message: node.props.goal,
+				nodeId: stepId,
+				metadata: { attempt, role: roleName, harness: harnessName },
+			});
+			this.hooks.stepStarted(info);
+			this.hooks.taskStarted?.(info);
+
+			const resolvedContext = await this.resolveContext([
+				...(inlineAgent?.instructions ? [`Role instructions:\n${inlineAgent.instructions}`] : []),
+				...(registeredAgent?.instructions ? [`Role instructions:\n${registeredAgent.instructions}`] : []),
+				...(node.props.instructions ? [`Step instructions:\n${node.props.instructions}`] : []),
+				...(node.props.acceptanceCriteria?.length
+					? [`Acceptance criteria:\n${node.props.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}`]
+					: []),
+				...(node.props.context ?? []),
+			]);
 
 			if (attempt === 1) {
 				taskHandle = harness.startTask({
 					goal: node.props.goal,
-					model: node.props.model,
+					model,
 					context: resolvedContext,
 					constraints: childScope.constraints,
 					protectedFiles: childScope.protectedFiles,
@@ -647,26 +698,39 @@ export class PiperOrchestrator {
 					protectedFiles: childScope.protectedFiles,
 				});
 
-				const combinedFailures = [...constraintFailures];
-				if (error.logs) {
-					combinedFailures.push(error.logs);
-				} else {
-					combinedFailures.push(error.message);
-				}
+				const combinedFailures = [
+					...constraintFailures,
+					error.logs ?? error.message,
+				];
 
 				if (error.retryable && attempt < maxAttempts) {
 					failures = combinedFailures;
-					this.hooks.taskRetry(info, combinedFailures);
+					this.hooks.stepRetry(info, combinedFailures);
+					this.hooks.taskRetry?.(info, combinedFailures);
+					this.recordEvent({
+						type: "step:retry",
+						message: combinedFailures.join("\n\n"),
+						nodeId: stepId,
+						metadata: { attempt },
+					});
 					continue;
 				}
 
-				if (node.props.artifact) {
-					this.artifacts.fail(getArtifactName(node.props.artifact));
+				if (node.props.produces ?? node.props.artifact) {
+					this.artifacts.fail(getArtifactName((node.props.produces ?? node.props.artifact)!));
 				}
 
-				this.failedTasks += 1;
-				this.hooks.taskFailed(info, error);
+				this.failedSteps += 1;
+				this.hooks.stepFailed(info, error);
+				this.hooks.taskFailed?.(info, error);
+				node.props.onError?.(error);
 				node.props["on:error"]?.(error);
+				this.recordEvent({
+					type: "step:fail",
+					message: error.message,
+					nodeId: stepId,
+					metadata: { attempt },
+				});
 				throw error;
 			} finally {
 				unregisterActiveTask?.();
@@ -679,169 +743,355 @@ export class PiperOrchestrator {
 				snapshot,
 				protectedFiles: childScope.protectedFiles,
 			});
-			const validationFailures = await runValidations(
-				node.props.validate,
-				this.createRuntimeValueContext(),
-			);
+			const validationFailures = await this.runEvaluations(node.props.validate, stepId, roleName);
 			const allFailures = [...constraintFailures, ...validationFailures];
 
 			if (allFailures.length > 0) {
 				if (attempt < maxAttempts) {
 					failures = allFailures;
-					this.hooks.taskRetry(info, allFailures);
+					this.hooks.stepRetry(info, allFailures);
+					this.hooks.taskRetry?.(info, allFailures);
+					this.recordEvent({
+						type: "step:retry",
+						message: allFailures.join("\n\n"),
+						nodeId: stepId,
+						metadata: { attempt },
+					});
 					continue;
 				}
 
 				const error: TaskError = {
-					message: `Task failed after ${attempt} attempts.`,
+					message: `Step failed after ${attempt} attempts.`,
 					logs: allFailures.join("\n\n"),
 					modifiedFiles: result.modifiedFiles,
 					retryable: false,
 				};
 
-				if (node.props.artifact) {
-					this.artifacts.fail(getArtifactName(node.props.artifact));
+				if (node.props.produces ?? node.props.artifact) {
+					this.artifacts.fail(getArtifactName((node.props.produces ?? node.props.artifact)!));
 				}
 
-				this.failedTasks += 1;
-				this.hooks.taskFailed(info, error);
+				this.failedSteps += 1;
+				this.hooks.stepFailed(info, error);
+				this.hooks.taskFailed?.(info, error);
+				node.props.onError?.(error);
 				node.props["on:error"]?.(error);
+				this.recordEvent({
+					type: "step:fail",
+					message: error.message,
+					nodeId: stepId,
+					metadata: { attempt },
+				});
 				throw error;
 			}
 
-			if (node.props.artifact) {
-				this.artifacts.set(getArtifactName(node.props.artifact), result);
+			if (node.props.produces ?? node.props.artifact) {
+				this.artifacts.set(getArtifactName((node.props.produces ?? node.props.artifact)!), result);
 				await this.persistOutputs();
 			}
 
-			this.completedTasks += 1;
-			this.hooks.taskCompleted(info, result);
+			this.completedSteps += 1;
+			this.hooks.stepCompleted(info, result);
+			this.hooks.taskCompleted?.(info, result);
+			node.props.onComplete?.(result);
 			node.props["on:complete"]?.(result);
+			this.recordEvent({
+				type: "step:complete",
+				message: node.props.goal,
+				nodeId: stepId,
+				metadata: { attempt, modifiedFiles: result.modifiedFiles },
+			});
 			return;
 		}
 
-		throw new Error(`Task "${node.props.goal}" exited its retry loop unexpectedly.`);
+		throw new Error(`Step "${node.props.goal}" exited its retry loop unexpectedly.`);
+	}
+
+	private async executeEvaluate(node: Extract<ConcreteLoopNode, { kind: "evaluate" }>): Promise<void> {
+		this.recordEvent({
+			type: "evaluate:start",
+			message: node.props.name,
+			nodeId: node.props.id,
+		});
+		const result = await this.evaluateValue(node.props.using);
+
+		if (result.passed) {
+			this.recordEvent({
+				type: "evaluate:pass",
+				message: node.props.name,
+				nodeId: node.props.id,
+				metadata: result.metadata,
+			});
+			return;
+		}
+
+		const message = node.props.feedback ?? result.feedback ?? `Evaluation failed: ${node.props.name}`;
+		this.addFeedback({
+			source: node.props.id ?? node.props.name,
+			scope: node.props.scope,
+			message,
+			severity: "error",
+		});
+		this.recordEvent({
+			type: "evaluate:fail",
+			message,
+			nodeId: node.props.id,
+			metadata: result.metadata,
+		});
+		throw new EvaluationFailure([message]);
+	}
+
+	private async executeRepeat(
+		node: Extract<ConcreteLoopNode, { kind: "repeat" }>,
+		scope: ConstraintScope,
+	): Promise<void> {
+		const maxAttempts = node.props.maxAttempts ?? (node.props.maxRetries ?? 2) + 1;
+		this.recordEvent({
+			type: "repeat:start",
+			message: `Repeat ${node.props.id ?? "loop"}`,
+			nodeId: node.props.id,
+			metadata: { maxAttempts },
+		});
+
+		let latestFailures: string[] = [];
+		for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+			this.recordEvent({
+				type: "repeat:iteration",
+				message: `Iteration ${attempt}`,
+				nodeId: node.props.id,
+				metadata: { attempt },
+			});
+
+			try {
+				await this.executeSequence(node.props.children, scope);
+				const failures = await this.runEvaluations(node.props.until, node.props.id ?? "repeat");
+				if (failures.length === 0) {
+					this.recordEvent({
+						type: "repeat:complete",
+						message: `Repeat completed after ${attempt} iteration(s).`,
+						nodeId: node.props.id,
+						metadata: { attempt },
+					});
+					return;
+				}
+				latestFailures = failures;
+			} catch (error) {
+				if (isPiperCancellationError(error)) {
+					throw error;
+				}
+
+				latestFailures =
+					error instanceof EvaluationFailure ? error.feedback : [toTaskError(error).message];
+
+				if (node.props.onFailure && attempt < maxAttempts) {
+					let retryRequested = false;
+					const retry = () => {
+						retryRequested = true;
+					};
+					await this.executeNode(normalizeTree(node.props.onFailure(toTaskError(error), retry)), scope);
+					if (retryRequested) {
+						continue;
+					}
+				}
+			}
+
+			if (attempt < maxAttempts) {
+				for (const failure of latestFailures) {
+					this.addFeedback({
+						source: node.props.id ?? "repeat",
+						message: failure,
+						severity: "warning",
+						iteration: attempt,
+					});
+				}
+				continue;
+			}
+		}
+
+		throw {
+			message: `Repeat loop exhausted ${maxAttempts} attempt(s).`,
+			logs: latestFailures.join("\n\n"),
+			retryable: false,
+		} satisfies TaskError;
 	}
 
 	private async executeParallel(
-		node: Extract<TaskNode, { kind: "parallel" }>,
+		node: Extract<ConcreteLoopNode, { kind: "parallel" }>,
 		scope: ConstraintScope,
 	): Promise<void> {
-		this.hooks.info(node.props.status ?? DEFAULT_PARALLEL_STATUS);
+		const message = node.props.status ?? DEFAULT_PARALLEL_STATUS;
+		this.hooks.info(message);
+		this.recordEvent({
+			type: "parallel:start",
+			message,
+			nodeId: node.props.id,
+		});
 
-		const childrenPromise = Promise.all(
-			node.props.children.map((child) => this.executeNode(child, scope)),
-		);
-		await childrenPromise;
+		await Promise.all(node.props.children.map((child) => this.executeNode(child, scope)));
+
+		this.recordEvent({
+			type: "parallel:complete",
+			message,
+			nodeId: node.props.id,
+		});
 	}
 
-	private async executeRecover(
-		node: Extract<TaskNode, { kind: "recover" }>,
+	private async executeCompare(
+		node: Extract<ConcreteLoopNode, { kind: "compare" }>,
 		scope: ConstraintScope,
 	): Promise<void> {
-		const maxRetries = node.props.maxRetries ?? 3;
-		let attempts = 0;
+		const before = this.artifacts.snapshot();
+		await Promise.all(node.props.branches.map((branch) => this.executeNode(branch.node, scope)));
+		const after = this.artifacts.snapshot();
+		const branchSummary = node.props.branches.map((branch) => `- ${branch.name}`).join("\n");
+		const result = node.props.evaluator?.(this.createRuntimeValueContext());
+		const evaluation = result ? await result : true;
+		const passed = typeof evaluation === "boolean" ? evaluation : evaluation.passed;
 
-		while (true) {
-			try {
-				await this.executeSequence(node.props.children, scope);
-				return;
-			} catch (rawError) {
-				if (isPiperCancellationError(rawError)) {
-					throw rawError;
-				}
-
-				const error = toTaskError(rawError, "Error boundary caught a failure.");
-				if (attempts >= maxRetries) {
-					node.props["on:fatal"]?.(error);
-					throw error;
-				}
-
-				attempts += 1;
-				let retryRequested = false;
-				const retry = () => {
-					retryRequested = true;
-				};
-
-				const recovery = node.props.onFailure(error, retry);
-				const recoveryOutputGraph = collectOutputGraph(recovery);
-				this.artifacts.declareAll(recoveryOutputGraph.declarations);
-				await this.executeNode(recovery, scope);
-
-				if (!retryRequested) {
-					throw error;
-				}
-			}
+		if (!passed) {
+			throw new EvaluationFailure([
+				typeof evaluation === "boolean"
+					? "Compare evaluator rejected all branches."
+					: evaluation.feedback ?? "Compare evaluator rejected all branches.",
+			]);
 		}
+
+		if (node.props.produces) {
+			this.artifacts.set(getArtifactName(node.props.produces), {
+				output: `Compared branches:\n${branchSummary}`,
+				modifiedFiles: [],
+				metadata: { before, after },
+			});
+			await this.persistOutputs();
+		}
+
+		this.recordEvent({
+			type: "compare:complete",
+			message: `Compared ${node.props.branches.length} branch(es).`,
+			nodeId: node.props.id,
+		});
 	}
 
-	private async executeProtect(
-		node: Extract<TaskNode, { kind: "protect" }>,
+	private async executeGate(node: Extract<ConcreteLoopNode, { kind: "gate" }>): Promise<void> {
+		const approved =
+			typeof node.props.approve === "function"
+				? await this.evaluateValue(node.props.approve)
+				: { passed: node.props.approve ?? true };
+
+		if (approved.passed) {
+			this.recordEvent({
+				type: "gate:approved",
+				message: node.props.message ?? node.props.name,
+				nodeId: node.props.id,
+			});
+			return;
+		}
+
+		const message = approved.feedback ?? `Gate rejected: ${node.props.name}`;
+		this.recordEvent({
+			type: "gate:rejected",
+			message,
+			nodeId: node.props.id,
+		});
+		throw new EvaluationFailure([message]);
+	}
+
+	private async executePolicy(
+		node: Extract<ConcreteLoopNode, { kind: "policy" }>,
 		scope: ConstraintScope,
 	): Promise<void> {
-		const childScope = extendConstraintScope(
-			scope,
-			node.props.protectedFiles.map((filePath) => protectedFileConstraint(filePath)),
-		);
+		const childScope = extendConstraintScope(scope, [
+			...(node.props.constraints ?? []),
+			...(node.props.protectedFiles ?? []).map((filePath) => protectedFileConstraint(filePath)),
+		]);
+
+		this.recordEvent({
+			type: "policy:enter",
+			message: node.props.name ?? "Policy scope",
+			nodeId: node.props.id,
+			metadata: {
+				constraints: childScope.constraints,
+				protectedFiles: childScope.protectedFiles,
+			},
+		});
 
 		await this.executeSequence(node.props.children, childScope);
-		this.throwIfCancelled();
-
-		const failures = await runValidations(node.props.validate, this.createRuntimeValueContext());
+		const failures = await this.runEvaluations(node.props.validate, node.props.id ?? "policy");
 		if (failures.length > 0) {
-			throw {
-				message: "Protect validation failed.",
-				logs: failures.join("\n\n"),
-				retryable: false,
-			} satisfies TaskError;
+			throw new EvaluationFailure(failures);
 		}
+
+		this.recordEvent({
+			type: "policy:exit",
+			message: node.props.name ?? "Policy scope",
+			nodeId: node.props.id,
+		});
 	}
 
-	private async executeSequence(children: TaskNode[], scope: ConstraintScope): Promise<void> {
+	private async executeSequence(children: ConcreteLoopNode[], scope: ConstraintScope): Promise<void> {
 		for (const child of children) {
 			this.throwIfCancelled();
 			await this.executeNode(child, scope);
 		}
 	}
 
-	private async executeNode(node: TaskNode, scope: ConstraintScope): Promise<void> {
-		if (!node) {
-			return;
-		}
-
+	private async executeNode(node: ConcreteLoopNode, scope: ConstraintScope): Promise<void> {
 		this.throwIfCancelled();
 
 		switch (node.kind) {
-			case "task":
-				await this.executeTask(node, scope);
-				return;
-			case "workflow":
+			case "loop":
+				for (const [name, value] of Object.entries(node.props.state ?? {})) {
+					this.state.set(name, value);
+				}
+				for (const agent of node.props.agents ?? []) {
+					this.agents.set(agent.name, agent);
+				}
+				this.recordEvent({
+					type: "loop:start",
+					message: node.props.objective,
+					nodeId: node.props.id,
+				});
 				await this.executeSequence(node.props.children, scope);
+				await this.runEvaluations(node.props.stopWhen, node.props.id ?? "loop");
+				this.recordEvent({
+					type: "loop:complete",
+					message: node.props.objective,
+					nodeId: node.props.id,
+				});
+				return;
+			case "step":
+				await this.executeStep(node, scope);
+				return;
+			case "evaluate":
+				await this.executeEvaluate(node);
+				return;
+			case "repeat":
+				await this.executeRepeat(node, scope);
 				return;
 			case "parallel":
 				await this.executeParallel(node, scope);
 				return;
-			case "recover":
-				await this.executeRecover(node, scope);
+			case "compare":
+				await this.executeCompare(node, scope);
 				return;
-			case "protect":
-				await this.executeProtect(node, scope);
+			case "gate":
+				await this.executeGate(node);
 				return;
-			default:
-				throw new Error(`Unsupported task node: ${(node as { kind?: string }).kind ?? "unknown"}`);
+			case "policy":
+				await this.executePolicy(node, scope);
+				return;
+			case "state":
+				this.state.set(node.props.name, node.props.value);
+				return;
+			case "feedback":
+				this.addFeedback({
+					source: node.props.source ?? node.props.id ?? "feedback",
+					scope: node.props.scope,
+					message: node.props.message,
+					severity: node.props.severity ?? "info",
+				});
+				return;
 		}
-	}
-
-	private registerActiveTask(handle: TaskHandle, harness: HarnessAdapter): () => void {
-		this.activeTasks.set(handle, { harness });
-
-		if (this.cancellationState.error) {
-			harness.cancel(handle);
-		}
-
-		return () => {
-			this.activeTasks.delete(handle);
-		};
 	}
 
 	private throwIfCancelled(): void {
@@ -851,21 +1101,12 @@ export class PiperOrchestrator {
 	}
 
 	private async cancelable<T>(promise: Promise<T>): Promise<T> {
-		this.throwIfCancelled();
-
 		const outcome = await Promise.race([
-			promise.then(
-				(value) => ({ kind: "resolved" as const, value }),
-				(error) => ({ kind: "rejected" as const, error }),
-			),
+			promise.then((value) => ({ kind: "resolved" as const, value })),
 			this.cancellationState.promise.then((error) => ({ kind: "cancelled" as const, error })),
 		]);
 
 		if (outcome.kind === "cancelled") {
-			throw outcome.error;
-		}
-
-		if (outcome.kind === "rejected") {
 			throw outcome.error;
 		}
 

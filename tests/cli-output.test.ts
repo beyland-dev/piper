@@ -66,7 +66,7 @@ describe("CliReporter", () => {
 		);
 
 		expect(stdout.read()).toBe(
-			"[run] Plan\n      task=task-1  harness=mock  attempt=1\n\n      agent line\n\n[done] Successfully completed task-1\n",
+			"[run] Plan\n      step=task-1  harness=mock  attempt=1\n\n      agent line\n\n[done] Successfully completed task-1\n",
 		);
 		expect(stderr.read()).toBe("");
 	});
@@ -92,9 +92,13 @@ describe("CliReporter", () => {
 			{ output: "Done", modifiedFiles: [] },
 		);
 		reporter.summary({
+			completedSteps: 1,
+			failedSteps: 0,
 			completedTasks: 1,
 			failedTasks: 0,
 			artifacts: {},
+			feedback: [],
+			events: [],
 			runId: null,
 			artifactPath: null,
 		});
@@ -103,7 +107,7 @@ describe("CliReporter", () => {
 		expect(stdout.read()).toContain("\u001b[1mPlan\u001b[22m");
 		expect(stdout.read()).toContain("\u001b[1mtask-1\u001b[22m");
 		expect(stdout.read()).toContain(
-			"      \u001b[2mtask=task-1  harness=mock  attempt=1\u001b[22m",
+			"      \u001b[2mstep=task-1  harness=mock  attempt=1\u001b[22m",
 		);
 		expect(stdout.read()).toContain("\u001b[33mwarning line\u001b[39m");
 		expect(stdout.read()).toContain("\u001b[32m[summary]\u001b[39m");
