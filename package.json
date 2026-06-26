@@ -1,65 +1,65 @@
 {
-  "name": "@beyland/piper",
-  "version": "0.1.0",
-  "description": "A meta-framework for declaratively orchestrating coding agents",
-  "keywords": [
-    "agents",
-    "claude",
-    "codex",
-    "coding-agents",
-    "copilot",
-    "meta-framework",
-    "pi",
-    "piper",
-    "typescript",
-    "workflow"
-  ],
-  "homepage": "https://github.com/hawkticehurst/piper#readme",
-  "bugs": {
-    "url": "https://github.com/hawkticehurst/piper/issues"
-  },
-  "license": "MIT",
-  "author": "Hawk Ticehurst",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/hawkticehurst/piper.git"
-  },
-  "bin": {
-    "piper": "dist/cli/index.js"
-  },
-  "files": [
-    "dist"
-  ],
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "fmt": "oxfmt --write --config .oxfmt.json .",
-    "fmt:check": "oxfmt --check --config .oxfmt.json .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "piper": "npm run build --silent && node dist/cli/index.js",
-    "prepack": "npm run build",
-    "prepublishOnly": "npm run typecheck && npm test"
-  },
-  "dependencies": {
-    "esbuild": "^0.25.5"
-  },
-  "devDependencies": {
-    "@types/node": "^22.15.30",
-    "oxfmt": "^0.56.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
-  },
-  "packageManager": "pnpm@11.5.0"
+	"name": "@beyland/piper",
+	"version": "0.1.0",
+	"description": "A meta-framework for declaratively orchestrating coding agents",
+	"keywords": [
+		"agents",
+		"claude",
+		"codex",
+		"coding-agents",
+		"copilot",
+		"meta-framework",
+		"pi",
+		"piper",
+		"typescript",
+		"workflow"
+	],
+	"homepage": "https://github.com/hawkticehurst/piper#readme",
+	"bugs": {
+		"url": "https://github.com/hawkticehurst/piper/issues"
+	},
+	"license": "MIT",
+	"author": "Hawk Ticehurst",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/hawkticehurst/piper.git"
+	},
+	"bin": {
+		"piper": "dist/cli/index.js"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"fmt": "oxfmt --write --config .oxfmt.json .",
+		"fmt:check": "oxfmt --check --config .oxfmt.json .",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"piper": "npm run build --silent && node dist/cli/index.js",
+		"prepack": "npm run build",
+		"prepublishOnly": "npm run typecheck && npm test"
+	},
+	"dependencies": {
+		"esbuild": "^0.25.5"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.30",
+		"oxfmt": "^0.56.0",
+		"typescript": "^5.8.3",
+		"vitest": "^3.2.4"
+	},
+	"packageManager": "pnpm@11.5.0"
 }
