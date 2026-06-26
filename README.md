@@ -65,7 +65,8 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. Each ru
 
 ## Core primitives
 
-- `loop` — top-level objective, agents, state, policies, and stop conditions
+- `loop` — declares one inspectable agent feedback system: its objective, agents,
+  state, policies, stop conditions, and nested work
 - `agent` — named role with harness/model preferences, capabilities, instructions, and constraints
 - `harness` — adapter metadata for real coding-agent execution environments
 - `artifact` — typed durable output passed between steps
@@ -79,7 +80,10 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. Each ru
 - `policy` — guardrails for constraints and protected files
 - `state` / `runtimeValue` — structured runtime data
 
-Compatibility aliases (`workflow`, `task`, `protect`, `recover`) remain exported, but new loops should prefer the loop-oriented names.
+`loop` is the name for the whole feedback system, not just a root-level marker.
+`repeat` is the primitive for "try this again until it passes." Compatibility
+aliases (`workflow`, `task`, `protect`, `recover`) remain exported, but new loops
+should prefer the loop-oriented names.
 
 ## Recipe API
 
@@ -165,7 +169,8 @@ Possible first-party block surfaces:
 
 - `block(name, builder)` — names a reusable subgraph for previewing, tracing, docs, and reuse
 - `sequence(...children)` — groups ordered work without creating a full recipe
-- `branch({ from, into, using })` — maps one artifact into parallel downstream slices
+- `fanOut({ from, into, using })` — maps one artifact into parallel downstream
+  slices, like "turn this plan into API, UI, test, and docs work at the same time"
 - `repairUntil({ command | check, attempts }, child)` — wraps implementation plus evaluator feedback
 - `reviewBoundary({ protectedFiles, reviewers }, child)` — adds policy and review gates around risky work
 - `handoff({ from, to, artifact, instructions })` — makes agent-to-agent transfer explicit
@@ -174,6 +179,29 @@ Possible first-party block surfaces:
 Blocks should remain transparent: they compile to the same loop tree as core
 primitives, preserve artifacts and policies, and can be previewed or inlined by
 the CLI.
+
+### Why blocks instead of only scopes?
+
+A scope-like primitive is useful when you want to say "these constraints apply to
+this region of work." Piper already has that shape through `policy(...)`: a team
+can wrap a migration step and say the agent must not touch production Terraform,
+rotate secrets, or broaden the requested dependency upgrade.
+
+That still does not describe the user's whole job. Imagine a staff engineer is
+rolling out a checkout reliability project. They first need one planner to read
+incident notes and produce a shared plan. Then they need the API work, UI work,
+test work, and documentation work to happen in parallel from that same plan.
+Each branch should produce a named artifact so reviewers can inspect it later.
+If tests fail, only the implementation branches should re-run with the failure
+feedback; the original plan should stay stable. Before merge, the work needs a
+review boundary around risky files and a final bundle that summarizes what
+changed.
+
+A scope can guard part of that story, but it cannot name reusable orchestration
+pieces, fan one artifact into several downstream branches, preserve the branch
+outputs as first-class artifacts, or show the whole shape in a preview. Blocks
+are meant to package those repeated orchestration shapes while still compiling
+down to the same transparent primitives.
 
 ## Run with the CLI
 
