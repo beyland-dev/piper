@@ -78,7 +78,7 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. Each ru
 - `compare` — run branches and produce a decision artifact
 - `gate` — approval checkpoint
 - `policy` — guardrails for constraints and protected files
-- `state` / `runtimeValue` — structured runtime data
+- `state` / `runtimeValue` / `input` — structured runtime and external data
 
 ## Recipe API
 
@@ -149,6 +149,71 @@ export default sharedPlan({
 
 Composition functions remain transparent: they return the same loop tree as
 core primitives, preserve artifacts and policies, and can be previewed by the CLI.
+
+## External data and runtime context
+
+Piper loops are TypeScript programs, so they can fetch, build, or derive data with
+ordinary JavaScript before handing work to an agent. This makes external data a
+first-class loop input instead of a hidden prompt detail: load the data, format it
+as focused context, then let Piper coordinate agents, artifacts, feedback, and
+evaluators around it.
+
+Use the smallest data boundary that matches the lifecycle:
+
+1. **Build-time data** — fetch or compute values before constructing the loop when
+   the data is static for the run.
+2. **Runtime data** — use `input(...)` or `runtimeValue(...)` when data should be
+   loaded as execution reaches a step or evaluator.
+3. **Durable data** — use `artifact(...).value()` or `.result()` when an agent
+   output must be reused or persisted for later steps.
+4. **Run state** — use `loop({ state })` or `state(...)` for explicit run-scoped
+   values that evaluators or runtime values need to read.
+
+`input` is a named wrapper around `runtimeValue` for external or derived data.
+It keeps integrations as normal JavaScript while making the data source visible
+in the loop definition.
+
+```ts
+import { agent, artifact, input, loop, step } from "@beyland/piper";
+
+const customerContext = input(
+	"customer-escalation",
+	async () => {
+		const ticket = await loadTicketFromSupportSdk("ESC-123");
+		return [
+			"Source: support ticket ESC-123",
+			`Customer: ${ticket.accountName}`,
+			`Severity: ${ticket.severity}`,
+			`Summary: ${ticket.summary}`,
+		].join("\n");
+	},
+	{ description: "support ticket ESC-123" },
+);
+
+const plan = artifact("escalation-plan", "plan");
+
+export default loop(
+	{
+		objective: "Plan the customer escalation response",
+		agents: [agent("planner", { harness: "copilot" })],
+	},
+	step({
+		role: "planner",
+		goal: "Create a response plan grounded in the customer escalation data",
+		context: [customerContext],
+		produces: plan,
+	}),
+);
+```
+
+Prefer formatting helpers that summarize large payloads, include provenance such
+as source and fetch time, redact secrets, and avoid dumping raw SDK objects into
+agent context. Use evaluator functions when external data should decide whether
+a loop passes, stops, or needs another iteration.
+
+See `examples/external-data-context.piper.ts`,
+`examples/sdk-backed-loop.piper.ts`, and `examples/data-driven-fanout.piper.ts`
+for composable patterns.
 
 ## Run with the CLI
 

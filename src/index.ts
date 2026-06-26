@@ -23,7 +23,8 @@ export type {
 	PolicyOptions,
 	RepeatOptions,
 } from "./core/builder.js";
-export { artifact, isArtifact, isRuntimeValue, runtimeValue } from "./core/output.js";
+export { artifact, input, isArtifact, isRuntimeValue, runtimeValue } from "./core/output.js";
+export type { InputLoader, InputOptions } from "./core/output.js";
 export {
 	criticLoop,
 	implementUntilTestsPass,

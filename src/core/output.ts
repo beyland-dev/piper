@@ -34,6 +34,13 @@ function createRuntimeValue<T>(
 	} as InternalRuntimeValue<T>;
 }
 
+export interface InputOptions {
+	description?: string;
+	dependencies?: readonly string[];
+}
+
+export type InputLoader<T> = (context: RuntimeValueContext) => MaybePromise<T>;
+
 export function isRuntimeValue(value: unknown): value is RuntimeValue<unknown> {
 	return (
 		typeof value === "object" &&
@@ -93,4 +100,12 @@ export function runtimeValue<T>(
 	dependencies: readonly string[] = [],
 ): RuntimeValue<T> {
 	return createRuntimeValue(description, resolver, dependencies);
+}
+
+export function input<T>(
+	name: string,
+	loader: InputLoader<T>,
+	options: InputOptions = {},
+): RuntimeValue<T> {
+	return createRuntimeValue(options.description ?? `input(${name})`, loader, options.dependencies);
 }
