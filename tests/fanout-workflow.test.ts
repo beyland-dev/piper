@@ -2,14 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-	MockHarness,
-	PiperOrchestrator,
-	artifact,
-	fanOut,
-	task,
-	workflow,
-} from "../src/index.js";
+import { MockHarness, PiperOrchestrator, artifact, fanOut, task, workflow } from "../src/index.js";
 
 describe("fanOut and workflow", () => {
 	const directories: string[] = [];
@@ -55,12 +48,11 @@ describe("fanOut and workflow", () => {
 		expect(summary.artifacts["ui-change"]).toBe("UI implementation");
 		expect(adapter.history).toHaveLength(3);
 		expect(
-			adapter.history.find((entry) => entry.goal === "Implement slice: api-change")
-				?.context,
+			adapter.history.find((entry) => entry.goal === "Implement slice: api-change")?.context,
 		).toContain("Plan artifact");
-		expect(
-			adapter.history.find((entry) => entry.goal === "Implement UI slice")?.context,
-		).toContain("Plan artifact");
+		expect(adapter.history.find((entry) => entry.goal === "Implement UI slice")?.context).toContain(
+			"Plan artifact",
+		);
 	});
 
 	it("keeps workflow as ordered grouping for task trees", async () => {
@@ -82,9 +74,6 @@ describe("fanOut and workflow", () => {
 		);
 
 		expect(summary.completedTasks).toBe(2);
-		expect(adapter.history.map((entry) => entry.goal)).toEqual([
-			"First task",
-			"Second task",
-		]);
+		expect(adapter.history.map((entry) => entry.goal)).toEqual(["First task", "Second task"]);
 	});
 });

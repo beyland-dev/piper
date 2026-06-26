@@ -74,6 +74,7 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. Each ru
 - `feedback` — structured critique that flows into later iterations
 - `repeat` / `until` — explicit iteration until checks pass or attempts are exhausted
 - `parallel` — concurrent investigation or decomposition branches
+- `fanOut` — maps one artifact into parallel downstream slice tasks
 - `compare` — run branches and produce a decision artifact
 - `gate` — approval checkpoint
 - `policy` — guardrails for constraints and protected files
@@ -165,7 +166,7 @@ Possible first-party block surfaces:
 
 - `block(name, builder)` — names a reusable subgraph for previewing, tracing, docs, and reuse
 - `sequence(...children)` — groups ordered work without creating a full recipe
-- `branch({ from, into, using })` — maps one artifact into parallel downstream slices
+- `fanOut({ from, into, using })` — maps one artifact into parallel downstream slices
 - `repairUntil({ command | check, attempts }, child)` — wraps implementation plus evaluator feedback
 - `reviewBoundary({ protectedFiles, reviewers }, child)` — adds policy and review gates around risky work
 - `handoff({ from, to, artifact, instructions })` — makes agent-to-agent transfer explicit

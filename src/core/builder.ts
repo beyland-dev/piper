@@ -47,7 +47,7 @@ export type FanOutSlice =
 			produces?: ArtifactTarget;
 			goal?: string;
 			context?: ContextValue[];
-		});
+	  });
 
 export interface FanOutProps {
 	id?: string;
@@ -91,9 +91,7 @@ function splitOptions<TOptions extends object>(
 	};
 }
 
-function isFanOutSliceOptions(
-	slice: FanOutSlice,
-): slice is Exclude<FanOutSlice, ArtifactTarget> {
+function isFanOutSliceOptions(slice: FanOutSlice): slice is Exclude<FanOutSlice, ArtifactTarget> {
 	return typeof slice === "object" && slice !== null && !("kind" in slice);
 }
 
@@ -225,14 +223,9 @@ export function fanOut(options: FanOutProps): ParallelNode {
 				harness: sliceOptions.harness ?? options.harness,
 				model: sliceOptions.model ?? options.model,
 				goal: sliceOptions.goal ?? `${options.using}: ${name}`,
-				context: [
-					fromContext,
-					...(options.context ?? []),
-					...(sliceOptions.context ?? []),
-				],
+				context: [fromContext, ...(options.context ?? []), ...(sliceOptions.context ?? [])],
 				instructions: sliceOptions.instructions ?? options.instructions,
-				acceptanceCriteria:
-					sliceOptions.acceptanceCriteria ?? options.acceptanceCriteria,
+				acceptanceCriteria: sliceOptions.acceptanceCriteria ?? options.acceptanceCriteria,
 				constraints: sliceOptions.constraints ?? options.constraints,
 				produces: target,
 				validate: sliceOptions.validate ?? options.validate,
