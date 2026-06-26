@@ -6,6 +6,14 @@ It does not replace Copilot, Claude, Codex, Pi, Cursor, or other agents. It coor
 
 > Design loops, not prompts.
 
+If web frameworks like React provide component primitives, meta frameworks like
+Next.js or Remix provide the application harness around those primitives: routing,
+data loading, mutation flows, deployment assumptions, and conventions for how
+work moves through the system. Piper aims to play a similar role for coding
+agents. It does not replace the underlying agent; it gives agent work a durable
+framework for orchestration, state, artifacts, quality gates, retries, and
+handoffs.
+
 ## Install
 
 ```bash
