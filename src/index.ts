@@ -2,6 +2,7 @@ export {
 	agent,
 	compare,
 	evaluate,
+	fanOut,
 	feedback,
 	gate,
 	harness,
@@ -16,8 +17,12 @@ export {
 	task,
 	until,
 	workflow,
+	branch,
 } from "./core/builder.js";
 export type {
+	FanOutProps,
+	FanOutSlice,
+	FanOutSliceContext,
 	ParallelOptions,
 	PolicyOptions,
 	ProtectOptions,

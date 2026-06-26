@@ -1,10 +1,14 @@
 import { normalizeChildren } from "./node-utils.js";
+import { artifact, getArtifactName } from "./output.js";
 import type {
 	AgentDefinition,
+	ArtifactTarget,
 	CompareNode,
 	CompareProps,
 	ConcreteLoopNode,
+	ContextValue,
 	EvaluateNode,
+	EvaluationValue,
 	EvaluateProps,
 	FeedbackNode,
 	FeedbackProps,
@@ -27,6 +31,39 @@ import type {
 } from "./types.js";
 
 type ChildrenOptions<TOptions extends object> = TOptions & { children?: LoopTree };
+
+export interface FanOutSliceContext {
+	name: string;
+	artifact: ArtifactTarget;
+	from: ArtifactTarget;
+	index: number;
+}
+
+export type FanOutSlice =
+	| ArtifactTarget
+	| (Omit<StepProps, "goal" | "context" | "produces" | "artifact"> & {
+			name?: string;
+			artifact?: ArtifactTarget;
+			produces?: ArtifactTarget;
+			goal?: string;
+			context?: ContextValue[];
+		});
+
+export interface FanOutProps {
+	id?: string;
+	status?: string;
+	from: ArtifactTarget;
+	into: readonly FanOutSlice[];
+	using: string | ((slice: FanOutSliceContext) => LoopTree);
+	role?: StepProps["role"];
+	harness?: string;
+	model?: string;
+	instructions?: string;
+	acceptanceCriteria?: string[];
+	constraints?: string[];
+	context?: ContextValue[];
+	validate?: EvaluationValue[];
+}
 
 function splitOptions<TOptions extends object>(
 	first: LoopTree | ChildrenOptions<TOptions> | undefined,
@@ -52,6 +89,33 @@ function splitOptions<TOptions extends object>(
 			options.children === undefined ? rest : [options.children, ...rest],
 		),
 	};
+}
+
+function isFanOutSliceOptions(
+	slice: FanOutSlice,
+): slice is Exclude<FanOutSlice, ArtifactTarget> {
+	return typeof slice === "object" && slice !== null && !("kind" in slice);
+}
+
+function fanOutSliceArtifact(slice: FanOutSlice): ArtifactTarget {
+	if (!isFanOutSliceOptions(slice)) {
+		return slice;
+	}
+
+	const target = slice.produces ?? slice.artifact ?? slice.name;
+	if (!target) {
+		throw new Error("fanOut slices must include a name, artifact, or produces target.");
+	}
+
+	return target;
+}
+
+function fanOutSliceName(slice: FanOutSlice): string {
+	return getArtifactName(fanOutSliceArtifact(slice));
+}
+
+function fanOutSourceContext(source: ArtifactTarget): ContextValue {
+	return typeof source === "string" ? artifact(source) : source;
 }
 
 export function agent<Name extends string>(
@@ -142,6 +206,44 @@ export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]):
 		},
 	};
 }
+
+export function fanOut(options: FanOutProps): ParallelNode {
+	const fromContext = fanOutSourceContext(options.from);
+	const children = options.into.flatMap((slice, index) => {
+		const target = fanOutSliceArtifact(slice);
+		const name = fanOutSliceName(slice);
+		const sliceContext = { name, artifact: target, from: options.from, index };
+
+		if (typeof options.using === "function") {
+			return normalizeChildren(options.using(sliceContext));
+		}
+
+		const sliceOptions = isFanOutSliceOptions(slice) ? slice : {};
+		return [
+			step({
+				role: sliceOptions.role ?? options.role,
+				harness: sliceOptions.harness ?? options.harness,
+				model: sliceOptions.model ?? options.model,
+				goal: sliceOptions.goal ?? `${options.using}: ${name}`,
+				context: [
+					fromContext,
+					...(options.context ?? []),
+					...(sliceOptions.context ?? []),
+				],
+				instructions: sliceOptions.instructions ?? options.instructions,
+				acceptanceCriteria:
+					sliceOptions.acceptanceCriteria ?? options.acceptanceCriteria,
+				constraints: sliceOptions.constraints ?? options.constraints,
+				produces: target,
+				validate: sliceOptions.validate ?? options.validate,
+			}),
+		];
+	});
+
+	return parallel({ id: options.id, status: options.status }, children);
+}
+
+export const branch = fanOut;
 
 export function compare(props: CompareProps): CompareNode {
 	return {
