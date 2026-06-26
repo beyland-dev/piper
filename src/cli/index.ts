@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 
-import { constants as fsConstants, realpathSync } from "node:fs";
-import { access } from "node:fs/promises";
-import { resolve } from "node:path";
+import { constants as fsConstants, existsSync, realpathSync } from "node:fs";
+import { access, mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { CopilotAhpHarness } from "../adapters/copilot-ahp-adapter.js";
 import { CopilotCliHarness } from "../adapters/copilot-cli-adapter.js";
 import { MockHarness } from "../adapters/mock-adapter.js";
 import { PiHarness } from "../adapters/pi-adapter.js";
-import type { HarnessAdapter } from "../core/types.js";
+import { task } from "../core/builder.js";
 import { normalizeTree } from "../core/node-utils.js";
+import type { HarnessAdapter, RuntimeHooks } from "../core/types.js";
 import type { TaskNode } from "../core/types.js";
 import { isPiperCancellationError, PiperOrchestrator } from "../runtime/executor.js";
 import { CliReporter, formatTaskTree } from "./output.js";
@@ -32,13 +33,27 @@ interface RunOptions {
 	printCompiled: boolean;
 }
 
+interface GenerateOptions {
+	prompt: string;
+	workspacePath: string;
+	harness: string;
+	outputPath: string;
+	verbose: boolean;
+	execute: boolean;
+	dryRunGenerated: boolean;
+	saveOnly: boolean;
+}
+
 type CliOptions =
 	| {
 			kind: "help";
 	  }
 	| ({
 			kind: "run";
-	  } & RunOptions);
+	  } & RunOptions)
+	| ({
+			kind: "generate";
+	  } & GenerateOptions);
 
 interface RunCliOptions {
 	stdout?: NodeJS.WritableStream;
@@ -47,12 +62,14 @@ interface RunCliOptions {
 	signalTarget?: SignalTarget;
 }
 
-const HELP_TEXT = `Usage: piper <workflow.piper.ts> [options]
+const HELP_TEXT = `Usage: piper <prompt> [options]
+       piper <workflow.piper.ts> [options]
 
-Compile and run a Piper workflow.
+Generate a Piper workflow from an initial prompt, or compile and run a workflow file.
 
 Arguments:
   workflow.piper.ts       Path to the workflow module.
+  prompt                  Initial prompt for generated workflow authoring.
 
 Options:
   --workspace <path>      Workspace directory for task execution. Defaults to the current directory.
@@ -60,14 +77,19 @@ Options:
   --verbose               Print verbose runtime artifact. This is the default.
   --dry-run               Print the task tree without executing it.
   --print-compiled        Print the bundled workflow module without executing it.
+  --harness <name>        Harness to use for workflow generation. Defaults to copilot.
+  --output <path>         Generated workflow path. Defaults to generated.piper.ts.
+  --save-only             Save the generated workflow without validating or executing it.
+  --execute               Execute the generated workflow after validation.
+  --dry-run-generated     Print the generated task tree after validation without executing it.
   -h, --help              Show this help information.
 
 Examples:
-  piper examples/simple-task.piper.ts
-      Run a workflow using the current directory as the workspace.
+  piper "Fix the failing tests" --workspace . --output workflows/generated.piper.ts
+      Ask a harness to write a workflow file, then validate it.
 
-  piper examples/simple-task.piper.ts --workspace .
-      Run a workflow with an explicit workspace directory.
+  piper "Prepare a migration plan" --dry-run-generated
+      Generate and preview the task tree without executing the generated workflow.
 
   piper examples/simple-task.piper.ts --dry-run
       Preview the task tree without executing tasks.
@@ -80,6 +102,102 @@ Examples:
 
   pnpm exec piper examples/simple-task.piper.ts --workspace .
       Run an installed Piper CLI through a package manager.`;
+
+function isWorkflowPathArgument(value: string, cwd: string): boolean {
+	const resolved = resolve(cwd, value);
+	return existsSync(resolved) || /\.(?:piper\.)?(?:[cm]?ts|[cm]?js)$/.test(value);
+}
+
+function parseGenerateArguments(prompt: string, values: string[], cwd: string): CliOptions {
+	let workspacePath = cwd;
+	let harness = "copilot";
+	let outputPath = resolve(cwd, "generated.piper.ts");
+	let verbose = true;
+	let execute = false;
+	let dryRunGenerated = false;
+	let saveOnly = false;
+
+	while (values.length > 0) {
+		const current = values.shift();
+		if (current === "--workspace") {
+			const workspaceArg = values.shift();
+			if (!workspaceArg) {
+				throw new Error("Missing value for --workspace");
+			}
+			workspacePath = resolve(cwd, workspaceArg);
+			continue;
+		}
+
+		if (current === "--harness") {
+			const harnessArg = values.shift();
+			if (!harnessArg) {
+				throw new Error("Missing value for --harness");
+			}
+			harness = harnessArg;
+			continue;
+		}
+
+		if (current === "--output") {
+			const outputArg = values.shift();
+			if (!outputArg) {
+				throw new Error("Missing value for --output");
+			}
+			outputPath = resolve(cwd, outputArg);
+			continue;
+		}
+
+		if (current === "--verbose") {
+			verbose = true;
+			continue;
+		}
+
+		if (current === "--quiet") {
+			verbose = false;
+			continue;
+		}
+
+		if (current === "--execute") {
+			execute = true;
+			continue;
+		}
+
+		if (current === "--save-only") {
+			saveOnly = true;
+			continue;
+		}
+
+		if (current === "--dry-run-generated") {
+			dryRunGenerated = true;
+			continue;
+		}
+
+		if (current === "-h" || current === "--help") {
+			return { kind: "help" };
+		}
+
+		throw new Error(`Unknown argument: ${current}`);
+	}
+
+	if (execute && dryRunGenerated) {
+		throw new Error("--execute and --dry-run-generated cannot be used together");
+	}
+
+	if (saveOnly && (execute || dryRunGenerated)) {
+		throw new Error("--save-only cannot be used with --execute or --dry-run-generated");
+	}
+
+	return {
+		kind: "generate",
+		prompt,
+		workspacePath,
+		harness,
+		outputPath,
+		verbose,
+		execute,
+		dryRunGenerated,
+		saveOnly,
+	};
+}
 
 async function resolveRuntimeEntry(relativeBase: string): Promise<string> {
 	const sourceCandidate = new URL(`../${relativeBase}.ts`, import.meta.url);
@@ -99,9 +217,13 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 		values.shift();
 	}
 
-	const workflowArg = values.shift();
-	if (!workflowArg || workflowArg === "-h" || workflowArg === "--help") {
+	const firstArg = values.shift();
+	if (!firstArg || firstArg === "-h" || firstArg === "--help") {
 		return { kind: "help" };
+	}
+
+	if (!isWorkflowPathArgument(firstArg, cwd)) {
+		return parseGenerateArguments(firstArg, values, cwd);
 	}
 
 	let workspacePath = cwd;
@@ -149,7 +271,7 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 
 	return {
 		kind: "run",
-		workflowPath: resolve(cwd, workflowArg),
+		workflowPath: resolve(cwd, firstArg),
 		workspacePath,
 		verbose,
 		dryRun,
@@ -245,8 +367,56 @@ function createCopilotHarness(): HarnessAdapter {
 				autoStartAgentHost: readBooleanEnv("COPILOT_AHP_AUTO_START"),
 			});
 		default:
-			throw new Error("PIPER_COPILOT_HARNESS must be either \"cli\" or \"ahp\"");
+			throw new Error('PIPER_COPILOT_HARNESS must be either "cli" or "ahp"');
 	}
+}
+
+function createDefaultHarnesses(): HarnessAdapter[] {
+	return [
+		new PiHarness({
+			command: process.env.PI_COMMAND ?? "pi",
+			commandTemplate: process.env.PI_COMMAND_TEMPLATE,
+		}),
+		createCopilotHarness(),
+		new MockHarness(),
+	];
+}
+
+function buildGenerationGoal(options: GenerateOptions): string {
+	return [
+		"Generate a Piper workflow file from the user's prompt.",
+		`User prompt:\n${options.prompt}`,
+		`Write the generated workflow to:\n${options.outputPath}`,
+	].join("\n\n");
+}
+
+function buildGenerationContext(options: GenerateOptions): string[] {
+	return [
+		`Target workflow path:\n${options.outputPath}`,
+		`Workspace path:\n${options.workspacePath}`,
+		[
+			"Authoring requirements:",
+			"- Write a TypeScript .piper.ts workflow file at the target path.",
+			'- Import workflow builders from "@beyland/piper".',
+			"- Export a default task tree or a default function returning a task tree.",
+			"- Use the current builder API: workflow, task, parallel, protect, recover, artifact, and runtimeValue.",
+			"- Do not use a hidden autonomous loop or dynamically mutate Piper's runtime task tree.",
+			"- Prefer explicit, inspectable tasks that can be reviewed before execution.",
+			"- Use harness names that Piper can run, such as copilot, pi, or mock.",
+		].join("\n"),
+		[
+			"Example workflow:",
+			'import { artifact, task, workflow } from "@beyland/piper";',
+			"",
+			'const plan = artifact("plan");',
+			"",
+			"export default workflow(",
+			'\ttask({ goal: "Create a plan", harness: "copilot", artifact: plan }),',
+			'\ttask({ goal: "Implement the plan", harness: "copilot", context: [plan.value()] }),',
+			");",
+		].join("\n"),
+		"Additional examples live in the repository's examples/ directory when available.",
+	];
 }
 
 function installCancellationHandlers(params: {
@@ -295,6 +465,42 @@ function installCancellationHandlers(params: {
 	};
 }
 
+async function executeTaskTree(params: {
+	taskTree: TaskNode;
+	workspacePath: string;
+	hooks: RuntimeHooks;
+	cliOptions: RunCliOptions;
+}): Promise<void> {
+	const orchestrator = new PiperOrchestrator({
+		workspacePath: params.workspacePath,
+		taskRetryLimit: 3,
+		hooks: params.hooks,
+		artifactStorage: process.env.PIPER_ARTIFACT_ROOT
+			? { rootDir: process.env.PIPER_ARTIFACT_ROOT }
+			: undefined,
+		harnesses: createDefaultHarnesses(),
+	});
+
+	const signalCancellation = installCancellationHandlers({
+		orchestrator,
+		stderr: params.cliOptions.stderr ?? process.stderr,
+		signalTarget: params.cliOptions.signalTarget ?? process,
+	});
+
+	try {
+		await orchestrator.execute(params.taskTree);
+		await signalCancellation.settle();
+	} catch (error) {
+		await signalCancellation.settle();
+		if (isPiperCancellationError(error)) {
+			throw error;
+		}
+		throw error;
+	} finally {
+		signalCancellation.dispose();
+	}
+}
+
 export async function runCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
 	const cwd = options.cwd ?? process.cwd();
 
@@ -312,6 +518,46 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 			stderr: options.stderr,
 		});
 
+		if (parsed.kind === "generate") {
+			await mkdir(dirname(parsed.outputPath), { recursive: true });
+			await executeTaskTree({
+				taskTree: task({
+					goal: buildGenerationGoal(parsed),
+					harness: parsed.harness,
+					context: buildGenerationContext(parsed),
+				}),
+				workspacePath: parsed.workspacePath,
+				hooks,
+				cliOptions: options,
+			});
+
+			if (parsed.saveOnly) {
+				await access(parsed.outputPath, fsConstants.F_OK);
+				hooks.info(`Generated workflow written to ${parsed.outputPath}`);
+				return 0;
+			}
+
+			const generatedTaskTree = await loadWorkflow(parsed.outputPath);
+			hooks.info(`Generated workflow written to ${parsed.outputPath}`);
+
+			if (parsed.dryRunGenerated) {
+				hooks.info("Generated workflow dry run");
+				hooks.info(formatTaskTree(generatedTaskTree));
+				return 0;
+			}
+
+			if (parsed.execute) {
+				await executeTaskTree({
+					taskTree: generatedTaskTree,
+					workspacePath: parsed.workspacePath,
+					hooks,
+					cliOptions: options,
+				});
+			}
+
+			return 0;
+		}
+
 		if (parsed.printCompiled) {
 			(options.stdout ?? process.stdout).write(`${await compileWorkflow(parsed.workflowPath)}\n`);
 			return 0;
@@ -325,41 +571,12 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 			return 0;
 		}
 
-		const orchestrator = new PiperOrchestrator({
+		await executeTaskTree({
+			taskTree,
 			workspacePath: parsed.workspacePath,
-			taskRetryLimit: 3,
 			hooks,
-			artifactStorage: process.env.PIPER_ARTIFACT_ROOT
-				? { rootDir: process.env.PIPER_ARTIFACT_ROOT }
-				: undefined,
-			harnesses: [
-				new PiHarness({
-					command: process.env.PI_COMMAND ?? "pi",
-					commandTemplate: process.env.PI_COMMAND_TEMPLATE,
-				}),
-				createCopilotHarness(),
-				new MockHarness(),
-			],
+			cliOptions: options,
 		});
-
-		const signalCancellation = installCancellationHandlers({
-			orchestrator,
-			stderr: options.stderr ?? process.stderr,
-			signalTarget: options.signalTarget ?? process,
-		});
-
-		try {
-			await orchestrator.execute(taskTree);
-			await signalCancellation.settle();
-		} catch (error) {
-			await signalCancellation.settle();
-			if (isPiperCancellationError(error)) {
-				return exitCodeForSignal(error.signal);
-			}
-			throw error;
-		} finally {
-			signalCancellation.dispose();
-		}
 
 		return 0;
 	} catch (error) {

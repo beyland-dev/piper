@@ -50,6 +50,24 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. You can
 PIPER_ARTIFACT_ROOT=/tmp/piper-runs piper workflows/simple-task.piper.ts
 ```
 
+### Generate a workflow from a prompt
+
+Piper can also ask one of its configured harnesses to author an inspectable workflow file:
+
+```bash
+piper "Plan and implement a small bug fix" --workspace . --output workflows/generated.piper.ts
+```
+
+Generation is an authoring step. Piper asks the selected harness to write a `.piper.ts` file, validates that the file can be loaded as a workflow, and leaves the generated file on disk for review. Use `--save-only` to leave the file on disk without loading, validating, or executing it. Piper does not execute the generated workflow unless you opt in:
+
+```bash
+piper "Draft a release workflow" --save-only
+piper "Plan a migration" --dry-run-generated
+piper "Fix the failing tests" --execute
+```
+
+Use `--harness <name>` to choose the authoring harness. It defaults to `copilot`.
+
 ### Choose the agent harness per task
 
 ```ts

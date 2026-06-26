@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -13,6 +13,23 @@ function createBufferStream(onChunk: (chunk: string) => void): Writable {
 			callback();
 		},
 	});
+}
+
+function createWorkflowGeneratorTemplate(
+	source = 'import { task } from "@beyland/piper";\\n\\nexport default task({ goal: "Generated task", harness: "mock" });\\n',
+): string {
+	const script = [
+		'const fs = require("node:fs");',
+		'const path = require("node:path");',
+		'const context = process.env.AGENT_CONTEXT ?? "";',
+		"const match = context.match(/Target workflow path:\\n([^\\n]+)/);",
+		'if (!match) throw new Error("missing target workflow path");',
+		`const source = \`${source}\`;`,
+		"fs.mkdirSync(path.dirname(match[1]), { recursive: true });",
+		'fs.writeFileSync(match[1], source, "utf8");',
+		'console.log("generated workflow");',
+	].join(" ");
+	return `node -e '${script}'`;
 }
 
 describe("CLI end-to-end", () => {
@@ -168,6 +185,185 @@ describe("CLI end-to-end", () => {
 		}
 	});
 
+	it("generates and previews a workflow", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
+		directories.push(workspacePath);
+		const outputPath = join(workspacePath, "workflows", "generated.piper.ts");
+
+		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
+		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+
+		try {
+			let stdout = "";
+			let stderr = "";
+			const exitCode = await runCli(
+				[
+					"Create a workflow for fixing tests",
+					"--workspace",
+					workspacePath,
+					"--output",
+					outputPath,
+					"--dry-run-generated",
+				],
+				{
+					stdout: createBufferStream((chunk) => {
+						stdout += chunk;
+					}),
+					stderr: createBufferStream((chunk) => {
+						stderr += chunk;
+					}),
+				},
+			);
+
+			const generated = await readFile(outputPath, "utf8");
+
+			expect(exitCode).toBe(0);
+			expect(stderr).toBe("");
+			expect(generated).toContain('goal: "Generated task"');
+			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
+			expect(stdout).toContain("[info] Generated workflow dry run");
+			expect(stdout).toContain("Task(harness=mock): Generated task");
+		} finally {
+			if (previousTemplate === undefined) {
+				delete process.env.COPILOT_COMMAND_TEMPLATE;
+			} else {
+				process.env.COPILOT_COMMAND_TEMPLATE = previousTemplate;
+			}
+		}
+	});
+
+	it("can save a generated workflow without loading or executing it", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
+		directories.push(workspacePath);
+		const outputPath = join(workspacePath, "generated.piper.ts");
+
+		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
+		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate(
+			"export default missingTask;\\n",
+		);
+
+		try {
+			let stdout = "";
+			let stderr = "";
+			const exitCode = await runCli(
+				[
+					"Create a workflow for fixing tests",
+					"--workspace",
+					workspacePath,
+					"--output",
+					outputPath,
+					"--save-only",
+				],
+				{
+					stdout: createBufferStream((chunk) => {
+						stdout += chunk;
+					}),
+					stderr: createBufferStream((chunk) => {
+						stderr += chunk;
+					}),
+				},
+			);
+
+			const generated = await readFile(outputPath, "utf8");
+
+			expect(exitCode).toBe(0);
+			expect(stderr).toBe("");
+			expect(generated).toBe("export default missingTask;\n");
+			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
+			expect(stdout).not.toContain("[info] Generated workflow dry run");
+			expect(stdout).not.toContain("[run] Generated task");
+		} finally {
+			if (previousTemplate === undefined) {
+				delete process.env.COPILOT_COMMAND_TEMPLATE;
+			} else {
+				process.env.COPILOT_COMMAND_TEMPLATE = previousTemplate;
+			}
+		}
+	});
+
+	it("executes a generated workflow when requested", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
+		directories.push(workspacePath);
+		const outputPath = join(workspacePath, "generated.piper.ts");
+
+		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
+		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+
+		try {
+			let stdout = "";
+			let stderr = "";
+			const exitCode = await runCli(
+				[
+					"Create a workflow for fixing tests",
+					"--workspace",
+					workspacePath,
+					"--output",
+					outputPath,
+					"--execute",
+				],
+				{
+					stdout: createBufferStream((chunk) => {
+						stdout += chunk;
+					}),
+					stderr: createBufferStream((chunk) => {
+						stderr += chunk;
+					}),
+				},
+			);
+
+			expect(exitCode).toBe(0);
+			expect(stderr).toBe("");
+			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
+			expect(stdout).toContain("[run] Generated task");
+			expect(stdout).toContain("[summary] completed=1 failed=0");
+		} finally {
+			if (previousTemplate === undefined) {
+				delete process.env.COPILOT_COMMAND_TEMPLATE;
+			} else {
+				process.env.COPILOT_COMMAND_TEMPLATE = previousTemplate;
+			}
+		}
+	});
+
+	it("treats generate as a prompt instead of a subcommand", async () => {
+		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
+		directories.push(workspacePath);
+		const outputPath = join(workspacePath, "generated.piper.ts");
+
+		const previousTemplate = process.env.COPILOT_COMMAND_TEMPLATE;
+		process.env.COPILOT_COMMAND_TEMPLATE = createWorkflowGeneratorTemplate();
+
+		try {
+			let stdout = "";
+			let stderr = "";
+			const exitCode = await runCli(
+				["generate", "--workspace", workspacePath, "--output", outputPath, "--dry-run-generated"],
+				{
+					stdout: createBufferStream((chunk) => {
+						stdout += chunk;
+					}),
+					stderr: createBufferStream((chunk) => {
+						stderr += chunk;
+					}),
+				},
+			);
+
+			const generated = await readFile(outputPath, "utf8");
+
+			expect(exitCode).toBe(0);
+			expect(stderr).toBe("");
+			expect(generated).toContain('goal: "Generated task"');
+			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
+			expect(stdout).toContain("[info] Generated workflow dry run");
+		} finally {
+			if (previousTemplate === undefined) {
+				delete process.env.COPILOT_COMMAND_TEMPLATE;
+			} else {
+				process.env.COPILOT_COMMAND_TEMPLATE = previousTemplate;
+			}
+		}
+	});
+
 	it("accepts a leading argument separator before the workflow path", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-cli-"));
 		directories.push(workspacePath);
@@ -216,11 +412,13 @@ describe("CLI end-to-end", () => {
 
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
-		expect(stdout).toContain("Usage: piper <workflow.piper.ts> [options]");
+		expect(stdout).toContain("Usage: piper <prompt> [options]");
 		expect(stdout).toContain("--workspace <path>");
 		expect(stdout).toContain("--quiet");
+		expect(stdout).toContain("--save-only");
 		expect(stdout).toContain("--help");
 		expect(stdout).toContain("Examples:");
+		expect(stdout).toContain('piper "Fix the failing tests"');
 		expect(stdout).toContain("piper examples/simple-task.piper.ts --dry-run");
 		expect(stdout).toContain("pnpm exec piper examples/simple-task.piper.ts --workspace .");
 	});
