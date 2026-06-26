@@ -184,9 +184,11 @@ function describeNode(node: ConcreteLoopNode, depth: number): string[] {
 		case "step":
 			return [
 				`${prefix}Step(${[
-					node.props.role ? `role=${typeof node.props.role === "string" ? node.props.role : node.props.role.name}` : undefined,
+					node.props.role
+						? `role=${typeof node.props.role === "string" ? node.props.role : node.props.role.name}`
+						: undefined,
 					node.props.harness ? `harness=${node.props.harness}` : undefined,
-					node.props.produces ?? node.props.artifact
+					(node.props.produces ?? node.props.artifact)
 						? `artifact=${getArtifactName((node.props.produces ?? node.props.artifact)!)}`
 						: undefined,
 				]

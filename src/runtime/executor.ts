@@ -335,7 +335,10 @@ export class PiperOrchestrator {
 	private readonly feedback: FeedbackRecord[] = [];
 	private readonly events: ExecutionSummary["events"] = [];
 	private readonly state = new Map<string, unknown>();
-	private readonly agents = new Map<string, { harness?: string; model?: string; instructions?: string; constraints: readonly string[] }>();
+	private readonly agents = new Map<
+		string,
+		{ harness?: string; model?: string; instructions?: string; constraints: readonly string[] }
+	>();
 
 	constructor(options: ExecutorOptions) {
 		for (const harness of options.harnesses) {
@@ -579,7 +582,6 @@ export class PiperOrchestrator {
 		const progressTask = (async () => {
 			for await (const update of handle.progress) {
 				this.hooks.stepProgress(info, update);
-				this.hooks.taskProgress?.(info, update);
 			}
 		})();
 
@@ -618,7 +620,9 @@ export class PiperOrchestrator {
 		const registeredAgent = roleName ? this.agents.get(roleName) : undefined;
 		const harnessName = node.props.harness ?? inlineAgent?.harness ?? registeredAgent?.harness;
 		if (!harnessName) {
-			throw new Error(`Step "${node.props.goal}" must specify a harness or use an agent with a harness.`);
+			throw new Error(
+				`Step "${node.props.goal}" must specify a harness or use an agent with a harness.`,
+			);
 		}
 
 		const harness = this.harnesses.get(harnessName);
@@ -629,8 +633,14 @@ export class PiperOrchestrator {
 		this.throwIfCancelled();
 
 		const stepId = node.props.id ?? `step-${++this.stepIndex}`;
-		const agentConstraints = [...(inlineAgent?.constraints ?? []), ...(registeredAgent?.constraints ?? [])];
-		const childScope = extendConstraintScope(scope, [...agentConstraints, ...(node.props.constraints ?? [])]);
+		const agentConstraints = [
+			...(inlineAgent?.constraints ?? []),
+			...(registeredAgent?.constraints ?? []),
+		];
+		const childScope = extendConstraintScope(scope, [
+			...agentConstraints,
+			...(node.props.constraints ?? []),
+		]);
 		const maxAttempts = this.retryLimit + 1;
 		let taskHandle: TaskHandle | undefined;
 		let failures: string[] = [];
@@ -656,14 +666,17 @@ export class PiperOrchestrator {
 				metadata: { attempt, role: roleName, harness: harnessName },
 			});
 			this.hooks.stepStarted(info);
-			this.hooks.taskStarted?.(info);
 
 			const resolvedContext = await this.resolveContext([
 				...(inlineAgent?.instructions ? [`Role instructions:\n${inlineAgent.instructions}`] : []),
-				...(registeredAgent?.instructions ? [`Role instructions:\n${registeredAgent.instructions}`] : []),
+				...(registeredAgent?.instructions
+					? [`Role instructions:\n${registeredAgent.instructions}`]
+					: []),
 				...(node.props.instructions ? [`Step instructions:\n${node.props.instructions}`] : []),
 				...(node.props.acceptanceCriteria?.length
-					? [`Acceptance criteria:\n${node.props.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}`]
+					? [
+							`Acceptance criteria:\n${node.props.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}`,
+						]
 					: []),
 				...(node.props.context ?? []),
 			]);
@@ -698,15 +711,11 @@ export class PiperOrchestrator {
 					protectedFiles: childScope.protectedFiles,
 				});
 
-				const combinedFailures = [
-					...constraintFailures,
-					error.logs ?? error.message,
-				];
+				const combinedFailures = [...constraintFailures, error.logs ?? error.message];
 
 				if (error.retryable && attempt < maxAttempts) {
 					failures = combinedFailures;
 					this.hooks.stepRetry(info, combinedFailures);
-					this.hooks.taskRetry?.(info, combinedFailures);
 					this.recordEvent({
 						type: "step:retry",
 						message: combinedFailures.join("\n\n"),
@@ -722,7 +731,6 @@ export class PiperOrchestrator {
 
 				this.failedSteps += 1;
 				this.hooks.stepFailed(info, error);
-				this.hooks.taskFailed?.(info, error);
 				node.props.onError?.(error);
 				node.props["on:error"]?.(error);
 				this.recordEvent({
@@ -750,7 +758,6 @@ export class PiperOrchestrator {
 				if (attempt < maxAttempts) {
 					failures = allFailures;
 					this.hooks.stepRetry(info, allFailures);
-					this.hooks.taskRetry?.(info, allFailures);
 					this.recordEvent({
 						type: "step:retry",
 						message: allFailures.join("\n\n"),
@@ -773,7 +780,6 @@ export class PiperOrchestrator {
 
 				this.failedSteps += 1;
 				this.hooks.stepFailed(info, error);
-				this.hooks.taskFailed?.(info, error);
 				node.props.onError?.(error);
 				node.props["on:error"]?.(error);
 				this.recordEvent({
@@ -792,7 +798,6 @@ export class PiperOrchestrator {
 
 			this.completedSteps += 1;
 			this.hooks.stepCompleted(info, result);
-			this.hooks.taskCompleted?.(info, result);
 			node.props.onComplete?.(result);
 			node.props["on:complete"]?.(result);
 			this.recordEvent({
@@ -807,7 +812,9 @@ export class PiperOrchestrator {
 		throw new Error(`Step "${node.props.goal}" exited its retry loop unexpectedly.`);
 	}
 
-	private async executeEvaluate(node: Extract<ConcreteLoopNode, { kind: "evaluate" }>): Promise<void> {
+	private async executeEvaluate(
+		node: Extract<ConcreteLoopNode, { kind: "evaluate" }>,
+	): Promise<void> {
 		this.recordEvent({
 			type: "evaluate:start",
 			message: node.props.name,
@@ -825,7 +832,8 @@ export class PiperOrchestrator {
 			return;
 		}
 
-		const message = node.props.feedback ?? result.feedback ?? `Evaluation failed: ${node.props.name}`;
+		const message =
+			node.props.feedback ?? result.feedback ?? `Evaluation failed: ${node.props.name}`;
 		this.addFeedback({
 			source: node.props.id ?? node.props.name,
 			scope: node.props.scope,
@@ -888,7 +896,10 @@ export class PiperOrchestrator {
 					const retry = () => {
 						retryRequested = true;
 					};
-					await this.executeNode(normalizeTree(node.props.onFailure(toTaskError(error), retry)), scope);
+					await this.executeNode(
+						normalizeTree(node.props.onFailure(toTaskError(error), retry)),
+						scope,
+					);
 					if (retryRequested) {
 						continue;
 					}
@@ -952,7 +963,7 @@ export class PiperOrchestrator {
 			throw new EvaluationFailure([
 				typeof evaluation === "boolean"
 					? "Compare evaluator rejected all branches."
-					: evaluation.feedback ?? "Compare evaluator rejected all branches.",
+					: (evaluation.feedback ?? "Compare evaluator rejected all branches."),
 			]);
 		}
 
@@ -1028,7 +1039,10 @@ export class PiperOrchestrator {
 		});
 	}
 
-	private async executeSequence(children: ConcreteLoopNode[], scope: ConstraintScope): Promise<void> {
+	private async executeSequence(
+		children: ConcreteLoopNode[],
+		scope: ConstraintScope,
+	): Promise<void> {
 		for (const child of children) {
 			this.throwIfCancelled();
 			await this.executeNode(child, scope);

@@ -48,7 +48,9 @@ function splitOptions<TOptions extends object>(
 	const options = (first ?? {}) as ChildrenOptions<TOptions>;
 	return {
 		options,
-		children: normalizeChildren(options.children === undefined ? rest : [options.children, ...rest]),
+		children: normalizeChildren(
+			options.children === undefined ? rest : [options.children, ...rest],
+		),
 	};
 }
 
@@ -119,7 +121,9 @@ export function repeat(options: RepeatProps, ...children: LoopTree[]): RepeatNod
 		kind: "repeat",
 		props: {
 			...options,
-			children: normalizeChildren(options.children === undefined ? children : [options.children, ...children]),
+			children: normalizeChildren(
+				options.children === undefined ? children : [options.children, ...children],
+			),
 		},
 	};
 }
@@ -128,10 +132,7 @@ export const until = repeat;
 
 export function parallel(...children: LoopTree[]): ParallelNode;
 export function parallel(options: ParallelProps, ...children: LoopTree[]): ParallelNode;
-export function parallel(
-	first?: LoopTree | ParallelProps,
-	...rest: LoopTree[]
-): ParallelNode {
+export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]): ParallelNode {
 	const { options, children } = splitOptions<ParallelProps>(first, rest);
 	return {
 		kind: "parallel",
@@ -161,7 +162,9 @@ export function policy(options: PolicyProps, ...children: LoopTree[]): PolicyNod
 		kind: "policy",
 		props: {
 			...options,
-			children: normalizeChildren(options.children === undefined ? children : [options.children, ...children]),
+			children: normalizeChildren(
+				options.children === undefined ? children : [options.children, ...children],
+			),
 		},
 	};
 }

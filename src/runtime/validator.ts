@@ -39,7 +39,7 @@ export async function runValidations(
 			failures.push(
 				typeof result === "boolean"
 					? "Function validation failed."
-					: result.feedback ?? "Function validation failed.",
+					: (result.feedback ?? "Function validation failed."),
 			);
 		}
 	}

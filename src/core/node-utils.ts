@@ -1,6 +1,9 @@
 import type { ConcreteLoopNode, LoopTree, RootLoopNode } from "./types.js";
 
-export function createLoop(children: ConcreteLoopNode[], objective = "Run Piper loop"): RootLoopNode {
+export function createLoop(
+	children: ConcreteLoopNode[],
+	objective = "Run Piper loop",
+): RootLoopNode {
 	return {
 		kind: "loop",
 		props: {

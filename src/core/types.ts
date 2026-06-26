@@ -128,7 +128,9 @@ export interface EvaluationResult {
 	metadata?: Record<string, unknown>;
 }
 
-export type EvaluatorFunction = (context: RuntimeValueContext) => MaybePromise<boolean | EvaluationResult>;
+export type EvaluatorFunction = (
+	context: RuntimeValueContext,
+) => MaybePromise<boolean | EvaluationResult>;
 
 export interface LoopProps {
 	id?: string;
@@ -228,11 +230,20 @@ export interface LoopNodeBase<K extends string, P> {
 export interface RootLoopNode extends LoopNodeBase<"loop", LoopProps & { children: LoopNode[] }> {}
 export interface StepNode extends LoopNodeBase<"step", StepProps> {}
 export interface EvaluateNode extends LoopNodeBase<"evaluate", EvaluateProps> {}
-export interface RepeatNode extends LoopNodeBase<"repeat", RepeatProps & { children: LoopNode[] }> {}
-export interface ParallelNode extends LoopNodeBase<"parallel", ParallelProps & { children: LoopNode[] }> {}
+export interface RepeatNode extends LoopNodeBase<
+	"repeat",
+	RepeatProps & { children: LoopNode[] }
+> {}
+export interface ParallelNode extends LoopNodeBase<
+	"parallel",
+	ParallelProps & { children: LoopNode[] }
+> {}
 export interface CompareNode extends LoopNodeBase<"compare", CompareProps> {}
 export interface GateNode extends LoopNodeBase<"gate", GateProps> {}
-export interface PolicyNode extends LoopNodeBase<"policy", PolicyProps & { children: LoopNode[] }> {}
+export interface PolicyNode extends LoopNodeBase<
+	"policy",
+	PolicyProps & { children: LoopNode[] }
+> {}
 export interface StateNode extends LoopNodeBase<"state", StateProps> {}
 export interface FeedbackNode extends LoopNodeBase<"feedback", FeedbackProps> {}
 

@@ -50,7 +50,9 @@ export function planThenImplement(options: RecipeOptions): RootLoopNode {
 	);
 }
 
-export function implementUntilTestsPass(options: RecipeOptions & { testCommand: string }): RootLoopNode {
+export function implementUntilTestsPass(
+	options: RecipeOptions & { testCommand: string },
+): RootLoopNode {
 	const testReport = artifact("test-report", "test-report");
 	const harnessName = defaultHarness(options.harness);
 
@@ -77,7 +79,9 @@ export function researchThenSynthesize(
 	options: RecipeOptions & { topics: string[] },
 ): RootLoopNode {
 	const harnessName = defaultHarness(options.harness);
-	const researchArtifacts = options.topics.map((topic) => artifact(`research-${topic}`, "research"));
+	const researchArtifacts = options.topics.map((topic) =>
+		artifact(`research-${topic}`, "research"),
+	);
 	const synthesis = artifact("synthesis", "summary");
 
 	return loop(
@@ -142,7 +146,9 @@ export function parallelInvestigateThenDecide(
 	options: RecipeOptions & { options: string[] },
 ): RootLoopNode {
 	const harnessName = defaultHarness(options.harness);
-	const investigations = options.options.map((name) => artifact(`investigation-${name}`, "research"));
+	const investigations = options.options.map((name) =>
+		artifact(`investigation-${name}`, "research"),
+	);
 	const decision = artifact("decision", "decision");
 
 	return loop(
@@ -205,7 +211,11 @@ export function migrationPlaybook(options: RecipeOptions): RootLoopNode {
 				agent("risk reviewer", { harness: harnessName, model: options.model }),
 			],
 		},
-		step({ role: "migration strategist", goal: "Inventory migration surface", produces: inventory }),
+		step({
+			role: "migration strategist",
+			goal: "Inventory migration surface",
+			produces: inventory,
+		}),
 		step({
 			role: "risk reviewer",
 			goal: "Assess migration risk and rollback needs",

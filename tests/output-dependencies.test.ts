@@ -45,7 +45,7 @@ describe("artifact dependencies", () => {
 				150,
 			),
 		).rejects.toThrow(
-			'Invalid workflow:\n- Artifact "missing" is referenced by task "Implement feature" runtime value "artifact value(missing)" but no task declares it.',
+			'Unknown artifact "missing". Add a step or compare node with produces="missing" before reading it.',
 		);
 	});
 
@@ -71,12 +71,10 @@ describe("artifact dependencies", () => {
 				),
 				150,
 			),
-		).rejects.toThrow(
-			'Artifact "missing" is referenced by task "Implement feature" runtime value "artifact value(missing)" but no task declares it.',
-		);
+		).rejects.toThrow('Add a step or compare node with produces="missing"');
 	});
 
-	it("fails before execution when an artifact has multiple producers", async () => {
+	it("keeps the latest artifact value when a loop intentionally revises an artifact", async () => {
 		const workspacePath = await mkdtemp(join(tmpdir(), "piper-artifact-deps-"));
 		directories.push(workspacePath);
 
@@ -88,14 +86,13 @@ describe("artifact dependencies", () => {
 			artifactStorage: false,
 		});
 
-		await expect(
-			executor.execute([
-				task({ goal: "Create first plan", harness: "mock", artifact: "plan" }),
-				task({ goal: "Create second plan", harness: "mock", artifact: "plan" }),
-			]),
-		).rejects.toThrow('Artifact "plan" is declared 2 times.');
+		const summary = await executor.execute([
+			task({ goal: "Create first plan", harness: "mock", artifact: "plan" }),
+			task({ goal: "Create second plan", harness: "mock", artifact: "plan" }),
+		]);
 
-		expect(adapter.history).toHaveLength(0);
+		expect(summary.artifacts.plan).toBe("Mock completed: Create second plan");
+		expect(adapter.history).toHaveLength(2);
 	});
 
 	it("rejects waiting artifact consumers when the producer task fails", async () => {
@@ -152,7 +149,7 @@ describe("artifact dependencies", () => {
 		).artifacts;
 
 		await expect(withTimeout(artifacts.waitForOutput("plan"), 100)).rejects.toThrow(
-			'Artifact "plan" was not produced because its task failed.',
+			'Artifact "plan" was not produced.',
 		);
 	});
 });
