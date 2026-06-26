@@ -1,10 +1,11 @@
 import { getArtifactName } from "../core/output.js";
 import type {
+	ConcreteLoopNode,
 	ExecutionSummary,
 	ProgressUpdate,
 	RuntimeHooks,
-	TaskAttemptInfo,
-	TaskNode,
+	RunEvent,
+	StepAttemptInfo,
 	TaskResult,
 } from "../core/types.js";
 
@@ -65,8 +66,11 @@ export class CliReporter implements RuntimeHooks {
 		this.writer.write(`${this.status("info", "cyan")} ${message}\n`);
 	}
 
-	taskStarted(info: TaskAttemptInfo): void {
-		const metadata = [`task=${info.id}`, `harness=${info.harness}`, `attempt=${info.attempt}`];
+	stepStarted(info: StepAttemptInfo): void {
+		const metadata = [`id=${info.id}`, `harness=${info.harness}`, `attempt=${info.attempt}`];
+		if (info.role) {
+			metadata.push(`role=${info.role}`);
+		}
 		if (info.model) {
 			metadata.push(`model=${info.model}`);
 		}
@@ -76,7 +80,7 @@ export class CliReporter implements RuntimeHooks {
 		this.writer.write(`      ${this.format(metadata.join("  "), "dim")}\n\n`);
 	}
 
-	taskProgress(info: TaskAttemptInfo, update: ProgressUpdate): void {
+	stepProgress(info: StepAttemptInfo, update: ProgressUpdate): void {
 		if (!this.verbose) {
 			return;
 		}
@@ -87,31 +91,59 @@ export class CliReporter implements RuntimeHooks {
 		this.writer.write(`      ${message}\n`);
 	}
 
-	taskRetry(info: TaskAttemptInfo, failures: string[]): void {
+	stepRetry(info: StepAttemptInfo, failures: string[]): void {
 		this.closeProgressBlock(info);
 		this.writer.write(
 			`${this.status("retry", "yellow")} ${this.format(info.id, "bold")} ${clip(failures.join(" | "))}\n`,
 		);
 	}
 
-	taskCompleted(info: TaskAttemptInfo, _result: TaskResult): void {
+	stepCompleted(info: StepAttemptInfo, _result: TaskResult): void {
 		this.closeProgressBlock(info);
 		this.writer.write(
 			`${this.status("done", "green")} Successfully completed ${this.format(info.id, "bold")}\n`,
 		);
 	}
 
-	taskFailed(info: TaskAttemptInfo, error: { message: string }): void {
+	stepFailed(info: StepAttemptInfo, error: { message: string }): void {
 		this.closeProgressBlock(info);
 		this.errorWriter.write(
 			`${this.status("fail", "red", true)} ${this.format(info.id, "bold", true)} ${error.message}\n`,
 		);
 	}
 
+	taskStarted(info: StepAttemptInfo): void {
+		this.stepStarted(info);
+	}
+
+	taskProgress(info: StepAttemptInfo, update: ProgressUpdate): void {
+		this.stepProgress(info, update);
+	}
+
+	taskRetry(info: StepAttemptInfo, failures: string[]): void {
+		this.stepRetry(info, failures);
+	}
+
+	taskCompleted(info: StepAttemptInfo, result: TaskResult): void {
+		this.stepCompleted(info, result);
+	}
+
+	taskFailed(info: StepAttemptInfo, error: { message: string }): void {
+		this.stepFailed(info, error);
+	}
+
+	event(event: RunEvent): void {
+		if (!this.verbose || event.type !== "feedback") {
+			return;
+		}
+
+		this.writer.write(`${this.status("feedback", "yellow")} ${clip(event.message)}\n`);
+	}
+
 	summary(summary: ExecutionSummary): void {
-		const labelStyle = summary.failedTasks > 0 ? "red" : "green";
+		const labelStyle = summary.failedSteps > 0 ? "red" : "green";
 		this.writer.write(
-			`${this.status("summary", labelStyle)} completed=${summary.completedTasks} failed=${summary.failedTasks} artifacts=${Object.keys(summary.artifacts).length}\n`,
+			`${this.status("summary", labelStyle)} completed=${summary.completedSteps} failed=${summary.failedSteps} artifacts=${Object.keys(summary.artifacts).length} feedback=${summary.feedback.length}\n`,
 		);
 	}
 
@@ -119,13 +151,13 @@ export class CliReporter implements RuntimeHooks {
 		return this.format(`[${label}]`, style, error);
 	}
 
-	private closeProgressBlock(info: TaskAttemptInfo): void {
+	private closeProgressBlock(info: StepAttemptInfo): void {
 		if (this.progressBlocks.delete(this.progressKey(info))) {
 			this.writer.write("\n");
 		}
 	}
 
-	private progressKey(info: TaskAttemptInfo): string {
+	private progressKey(info: StepAttemptInfo): string {
 		return `${info.id}:${info.attempt}`;
 	}
 
@@ -140,40 +172,63 @@ export class CliReporter implements RuntimeHooks {
 	}
 }
 
-function describeNode(node: TaskNode, depth: number): string[] {
-	if (!node) {
-		return [];
-	}
-
+function describeNode(node: ConcreteLoopNode, depth: number): string[] {
 	const prefix = `${"  ".repeat(depth)}- `;
 
 	switch (node.kind) {
-		case "task":
+		case "loop":
 			return [
-				`${prefix}Task(harness=${node.props.harness}${node.props.model ? `, model=${node.props.model}` : ""}${node.props.artifact ? `, artifact=${getArtifactName(node.props.artifact)}` : ""}): ${node.props.goal}`,
+				`${prefix}Loop: ${node.props.objective}`,
+				...node.props.children.flatMap((child) => describeNode(child, depth + 1)),
 			];
-		case "workflow":
-			return node.props.children.flatMap((child) => describeNode(child, depth));
+		case "step":
+			return [
+				`${prefix}Step(${[
+					node.props.role
+						? `role=${typeof node.props.role === "string" ? node.props.role : node.props.role.name}`
+						: undefined,
+					node.props.harness ? `harness=${node.props.harness}` : undefined,
+					(node.props.produces ?? node.props.artifact)
+						? `artifact=${getArtifactName((node.props.produces ?? node.props.artifact)!)}`
+						: undefined,
+				]
+					.filter(Boolean)
+					.join(", ")}): ${node.props.goal}`,
+			];
+		case "evaluate":
+			return [`${prefix}Evaluate: ${node.props.name}`];
+		case "feedback":
+			return [`${prefix}Feedback: ${clip(node.props.message)}`];
+		case "repeat":
+			return [
+				`${prefix}Repeat(maxAttempts=${node.props.maxAttempts ?? 3})`,
+				...node.props.children.flatMap((child) => describeNode(child, depth + 1)),
+			];
 		case "parallel":
 			return [
 				`${prefix}Parallel${typeof node.props.status === "string" ? ` status="${node.props.status}"` : ""}`,
 				...node.props.children.flatMap((child) => describeNode(child, depth + 1)),
 			];
-		case "recover":
+		case "compare":
 			return [
-				`${prefix}Recover(maxRetries=${node.props.maxRetries ?? 3})`,
+				`${prefix}Compare`,
+				...node.props.branches.flatMap((branch) => [
+					`${"  ".repeat(depth + 1)}- Branch: ${branch.name}`,
+					...describeNode(branch.node, depth + 2),
+				]),
+			];
+		case "gate":
+			return [`${prefix}Gate: ${node.props.name}`];
+		case "policy":
+			return [
+				`${prefix}Policy${node.props.name ? `: ${node.props.name}` : ""}`,
 				...node.props.children.flatMap((child) => describeNode(child, depth + 1)),
 			];
-		case "protect":
-			return [
-				`${prefix}Protect(protected=${node.props.protectedFiles.join(", ")})`,
-				...node.props.children.flatMap((child) => describeNode(child, depth + 1)),
-			];
-		default:
-			return [`${prefix}Unknown`];
+		case "state":
+			return [`${prefix}State: ${node.props.name}`];
 	}
 }
 
-export function formatTaskTree(node: TaskNode): string {
+export function formatTaskTree(node: ConcreteLoopNode): string {
 	return describeNode(node, 0).join("\n");
 }

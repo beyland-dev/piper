@@ -1,64 +1,301 @@
-import { createWorkflow, normalizeChildren } from "./node-utils.js";
-import { Parallel } from "./parallel.js";
-import { Protect } from "./protect.js";
-import { Recover } from "./recover.js";
-import { Task } from "./task.js";
+import { normalizeChildren } from "./node-utils.js";
+import { artifact, getArtifactName } from "./output.js";
 import type {
+	AgentDefinition,
+	ArtifactTarget,
+	CompareNode,
+	CompareProps,
+	ConcreteLoopNode,
+	ContextValue,
+	EvaluateNode,
+	EvaluationValue,
+	EvaluateProps,
+	FeedbackNode,
+	FeedbackProps,
+	GateNode,
+	GateProps,
+	HarnessDefinition,
+	LoopProps,
+	LoopTree,
 	ParallelNode,
 	ParallelProps,
-	ProtectNode,
-	ProtectProps,
-	RecoverNode,
-	RecoverProps,
-	TaskElement,
-	TaskNode,
-	TaskProps,
-	TaskTree,
-	WorkflowNode,
+	PolicyNode,
+	PolicyProps,
+	RepeatNode,
+	RepeatProps,
+	RootLoopNode,
+	StateNode,
+	StateProps,
+	StepNode,
+	StepProps,
 } from "./types.js";
 
-export type ParallelOptions = Omit<ParallelProps, "children">;
-export type ProtectOptions = Omit<ProtectProps, "children">;
-export type RecoverOptions = Omit<RecoverProps, "children">;
+type ChildrenOptions<TOptions extends object> = TOptions & { children?: LoopTree };
 
-function isTaskNode(value: unknown): value is TaskNode {
-	return (
-		value == null ||
-		value === false ||
-		(typeof value === "object" && value !== null && "kind" in value)
-	);
+export interface FanOutSliceContext {
+	name: string;
+	artifact: ArtifactTarget;
+	from: ArtifactTarget;
+	index: number;
+}
+
+export type FanOutSlice =
+	| ArtifactTarget
+	| (Omit<StepProps, "goal" | "context" | "produces" | "artifact"> & {
+			name?: string;
+			artifact?: ArtifactTarget;
+			produces?: ArtifactTarget;
+			goal?: string;
+			context?: ContextValue[];
+	  });
+
+export interface FanOutProps {
+	id?: string;
+	status?: string;
+	from: ArtifactTarget;
+	into: readonly FanOutSlice[];
+	using: string | ((slice: FanOutSliceContext) => LoopTree);
+	role?: StepProps["role"];
+	harness?: string;
+	model?: string;
+	instructions?: string;
+	acceptanceCriteria?: string[];
+	constraints?: string[];
+	context?: ContextValue[];
+	validate?: EvaluationValue[];
 }
 
 function splitOptions<TOptions extends object>(
-	first: TaskTree | TOptions | undefined,
-	rest: TaskTree[],
-): { options: TOptions; children: TaskTree[] } {
-	if (isTaskNode(first) || Array.isArray(first)) {
-		return { options: {} as TOptions, children: first === undefined ? rest : [first, ...rest] };
+	first: LoopTree | ChildrenOptions<TOptions> | undefined,
+	rest: LoopTree[],
+): { options: TOptions; children: ConcreteLoopNode[] } {
+	const looksLikeNode =
+		first == null ||
+		first === false ||
+		Array.isArray(first) ||
+		(typeof first === "object" && "kind" in first);
+
+	if (looksLikeNode) {
+		return {
+			options: {} as TOptions,
+			children: normalizeChildren(first === undefined ? rest : [first, ...rest]),
+		};
 	}
 
-	return { options: (first ?? {}) as TOptions, children: rest };
+	const options = (first ?? {}) as ChildrenOptions<TOptions>;
+	return {
+		options,
+		children: normalizeChildren(
+			options.children === undefined ? rest : [options.children, ...rest],
+		),
+	};
 }
 
-export function workflow(...children: TaskTree[]): WorkflowNode {
-	return createWorkflow(normalizeChildren(children));
+function isFanOutSliceOptions(slice: FanOutSlice): slice is Exclude<FanOutSlice, ArtifactTarget> {
+	return typeof slice === "object" && slice !== null && !("kind" in slice);
 }
 
-export function task(props: TaskProps): TaskElement {
-	return Task(props);
+function fanOutSliceArtifact(slice: FanOutSlice): ArtifactTarget {
+	if (!isFanOutSliceOptions(slice)) {
+		return slice;
+	}
+
+	const target = slice.produces ?? slice.artifact ?? slice.name;
+	if (!target) {
+		throw new Error("fanOut slices must include a name, artifact, or produces target.");
+	}
+
+	return target;
 }
 
-export function parallel(...children: TaskTree[]): ParallelNode;
-export function parallel(options: ParallelOptions, ...children: TaskTree[]): ParallelNode;
-export function parallel(first?: TaskTree | ParallelOptions, ...rest: TaskTree[]): ParallelNode {
-	const { options, children } = splitOptions<ParallelOptions>(first, rest);
-	return Parallel({ ...options, children: normalizeChildren(children) });
+function fanOutSliceName(slice: FanOutSlice): string {
+	return getArtifactName(fanOutSliceArtifact(slice));
 }
 
-export function protect(options: ProtectOptions, ...children: TaskTree[]): ProtectNode {
-	return Protect({ ...options, children: normalizeChildren(children) });
+function fanOutSourceContext(source: ArtifactTarget): ContextValue {
+	return typeof source === "string" ? artifact(source) : source;
 }
 
-export function recover(options: RecoverOptions, ...children: TaskTree[]): RecoverNode {
-	return Recover({ ...options, children: normalizeChildren(children) });
+export function agent<Name extends string>(
+	name: Name,
+	options: Partial<Omit<AgentDefinition<Name>, "kind" | "name">> = {},
+): AgentDefinition<Name> {
+	return {
+		kind: "agent",
+		name,
+		capabilities: options.capabilities ?? [],
+		constraints: options.constraints ?? [],
+		instructions: options.instructions,
+		harness: options.harness,
+		model: options.model,
+	};
 }
+
+export function harness<Name extends string>(
+	name: Name,
+	options: Partial<Omit<HarnessDefinition<Name>, "kind" | "name">> = {},
+): HarnessDefinition<Name> {
+	return {
+		kind: "harness",
+		name,
+		description: options.description,
+		capabilities: options.capabilities ?? [],
+	};
+}
+
+export function loop(...children: LoopTree[]): RootLoopNode;
+export function loop(options: LoopProps, ...children: LoopTree[]): RootLoopNode;
+export function loop(first?: LoopTree | LoopProps, ...rest: LoopTree[]): RootLoopNode {
+	const { options, children } = splitOptions<LoopProps>(first, rest);
+	return {
+		kind: "loop",
+		props: {
+			...options,
+			objective: options.objective ?? "Run Piper loop",
+			children,
+		},
+	};
+}
+
+export function step(props: StepProps): StepNode {
+	return {
+		kind: "step",
+		props,
+	};
+}
+
+export function evaluate(props: EvaluateProps): EvaluateNode {
+	return {
+		kind: "evaluate",
+		props,
+	};
+}
+
+export function feedback(props: FeedbackProps): FeedbackNode {
+	return {
+		kind: "feedback",
+		props,
+	};
+}
+
+export function repeat(options: RepeatProps, ...children: LoopTree[]): RepeatNode {
+	return {
+		kind: "repeat",
+		props: {
+			...options,
+			children: normalizeChildren(
+				options.children === undefined ? children : [options.children, ...children],
+			),
+		},
+	};
+}
+
+export const until = repeat;
+
+export function parallel(...children: LoopTree[]): ParallelNode;
+export function parallel(options: ParallelProps, ...children: LoopTree[]): ParallelNode;
+export function parallel(first?: LoopTree | ParallelProps, ...rest: LoopTree[]): ParallelNode {
+	const { options, children } = splitOptions<ParallelProps>(first, rest);
+	return {
+		kind: "parallel",
+		props: {
+			...options,
+			children,
+		},
+	};
+}
+
+/**
+ * Maps a source artifact into parallel downstream slice tasks.
+ *
+ * @param options.from - Artifact whose value is passed to every generated slice.
+ * @param options.into - Artifact targets, or per-slice task options, to produce in parallel.
+ * @param options.using - Shared goal prefix for generated steps, or a callback that returns a custom task tree for each slice.
+ * @returns A transparent parallel node containing the generated slice task trees.
+ *
+ * @example
+ * fanOut({ from: plan, into: [apiChange, uiChange], using: "Implement slice" })
+ *
+ * @example
+ * fanOut({
+ *   from: plan,
+ *   into: [apiChange, uiChange],
+ *   using: ({ name, artifact }) => task({ goal: `Implement ${name}`, produces: artifact }),
+ * })
+ */
+export function fanOut(options: FanOutProps): ParallelNode {
+	const fromContext = fanOutSourceContext(options.from);
+	const children = options.into.flatMap((slice, index) => {
+		const target = fanOutSliceArtifact(slice);
+		const name = fanOutSliceName(slice);
+		const sliceContext = { name, artifact: target, from: options.from, index };
+
+		if (typeof options.using === "function") {
+			return normalizeChildren(options.using(sliceContext));
+		}
+
+		const sliceOptions = isFanOutSliceOptions(slice) ? slice : {};
+		return [
+			step({
+				role: sliceOptions.role ?? options.role,
+				harness: sliceOptions.harness ?? options.harness,
+				model: sliceOptions.model ?? options.model,
+				goal: sliceOptions.goal ?? `${options.using}: ${name}`,
+				context: [fromContext, ...(options.context ?? []), ...(sliceOptions.context ?? [])],
+				instructions: sliceOptions.instructions ?? options.instructions,
+				acceptanceCriteria: sliceOptions.acceptanceCriteria ?? options.acceptanceCriteria,
+				constraints: sliceOptions.constraints ?? options.constraints,
+				produces: target,
+				validate: sliceOptions.validate ?? options.validate,
+			}),
+		];
+	});
+
+	return parallel({ id: options.id, status: options.status }, children);
+}
+
+export const branch = fanOut;
+
+export function compare(props: CompareProps): CompareNode {
+	return {
+		kind: "compare",
+		props,
+	};
+}
+
+export function gate(props: GateProps): GateNode {
+	return {
+		kind: "gate",
+		props,
+	};
+}
+
+export function policy(options: PolicyProps, ...children: LoopTree[]): PolicyNode {
+	return {
+		kind: "policy",
+		props: {
+			...options,
+			children: normalizeChildren(
+				options.children === undefined ? children : [options.children, ...children],
+			),
+		},
+	};
+}
+
+export function state(props: StateProps): StateNode {
+	return {
+		kind: "state",
+		props,
+	};
+}
+
+export const workflow = loop;
+export const task = step;
+export const protect = policy;
+export const recover = repeat;
+
+export type ParallelOptions = Omit<ParallelProps, "children">;
+export type PolicyOptions = Omit<PolicyProps, "children">;
+export type ProtectOptions = PolicyOptions;
+export type RepeatOptions = Omit<RepeatProps, "children">;
+export type RecoverOptions = RepeatOptions;

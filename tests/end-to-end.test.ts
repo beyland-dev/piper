@@ -96,11 +96,11 @@ describe("CLI end-to-end", () => {
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
 		expect(stdout).toContain("[run] Plan");
-		expect(stdout).toContain("      task=task-1  harness=mock  attempt=1");
+		expect(stdout).toContain("      id=step-1  harness=mock  attempt=1");
 		expect(stdout).toContain("\n\n      mock attempt 1 started");
-		expect(stdout).toContain("mock attempt 1 completed\n\n[done] Successfully completed task-1");
+		expect(stdout).toContain("mock attempt 1 completed\n\n[done] Successfully completed step-1");
 		expect(stdout).not.toContain("  | mock attempt 1 started");
-		expect(stdout).not.toContain("[task-1] mock attempt 1 started");
+		expect(stdout).not.toContain("[step-1] mock attempt 1 started");
 		expect(stdout).toContain("[summary] completed=3 failed=0");
 	});
 
@@ -135,7 +135,7 @@ describe("CLI end-to-end", () => {
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
 		expect(stdout).toContain("[run] Plan");
-		expect(stdout).toContain("task=task-1");
+		expect(stdout).toContain("id=step-1");
 		expect(stdout).not.toContain("      mock attempt 1 started");
 		expect(stdout).toContain("[summary] completed=1 failed=0");
 	});
@@ -174,7 +174,7 @@ describe("CLI end-to-end", () => {
 
 			expect(exitCode).toBe(0);
 			expect(stderr).toBe("");
-			expect(stdout).toContain("[done] Successfully completed task-1");
+			expect(stdout).toContain("[done] Successfully completed step-1");
 			expect(stdout).toContain("[summary] completed=1 failed=0");
 		} finally {
 			if (previousTemplate === undefined) {
@@ -222,7 +222,7 @@ describe("CLI end-to-end", () => {
 			expect(generated).toContain('goal: "Generated task"');
 			expect(stdout).toContain(`[info] Generated workflow written to ${outputPath}`);
 			expect(stdout).toContain("[info] Generated workflow dry run");
-			expect(stdout).toContain("Task(harness=mock): Generated task");
+			expect(stdout).toContain("Step(harness=mock): Generated task");
 		} finally {
 			if (previousTemplate === undefined) {
 				delete process.env.COPILOT_COMMAND_TEMPLATE;
@@ -395,7 +395,7 @@ describe("CLI end-to-end", () => {
 		expect(exitCode).toBe(0);
 		expect(stderr).toBe("");
 		expect(stdout).toContain("[info] Dry run");
-		expect(stdout).toContain("Task(harness=mock): Plan");
+		expect(stdout).toContain("Step(harness=mock): Plan");
 	});
 
 	it("prints help when no workflow path is provided", async () => {
@@ -500,7 +500,7 @@ describe("CLI end-to-end", () => {
 
 		await expect(run).resolves.toBe(130);
 		expect(stdout).toContain("[run] Long task");
-		expect(stdout).toContain("task=task-1");
+		expect(stdout).toContain("id=step-1");
 		expect(stderr).toContain("[cancel] Received SIGINT; cancelling in-flight tasks...");
 	});
 });

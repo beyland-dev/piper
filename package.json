@@ -1,14 +1,15 @@
 {
 	"name": "@beyland/piper",
 	"version": "0.1.0",
-	"description": "A meta-framework for declaratively orchestrating coding agents",
+	"description": "A meta-harness for designing durable loops that prompt coding agents",
 	"keywords": [
+		"agent-loops",
 		"agents",
 		"claude",
 		"codex",
 		"coding-agents",
 		"copilot",
-		"meta-framework",
+		"meta-harness",
 		"pi",
 		"piper",
 		"typescript",

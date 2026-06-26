@@ -9,10 +9,9 @@ import { CopilotAhpHarness } from "../adapters/copilot-ahp-adapter.js";
 import { CopilotCliHarness } from "../adapters/copilot-cli-adapter.js";
 import { MockHarness } from "../adapters/mock-adapter.js";
 import { PiHarness } from "../adapters/pi-adapter.js";
-import { task } from "../core/builder.js";
+import { step } from "../core/builder.js";
 import { normalizeTree } from "../core/node-utils.js";
-import type { HarnessAdapter, RuntimeHooks } from "../core/types.js";
-import type { TaskNode } from "../core/types.js";
+import type { ConcreteLoopNode, HarnessAdapter, RuntimeHooks } from "../core/types.js";
 import { isPiperCancellationError, PiperOrchestrator } from "../runtime/executor.js";
 import { CliReporter, formatTaskTree } from "./output.js";
 
@@ -308,7 +307,7 @@ async function compileWorkflow(workflowPath: string): Promise<string> {
 	return contents;
 }
 
-async function loadWorkflow(workflowPath: string): Promise<TaskNode> {
+async function loadWorkflow(workflowPath: string): Promise<ConcreteLoopNode> {
 	const contents = await compileWorkflow(workflowPath);
 
 	const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(contents)}`;
@@ -397,22 +396,22 @@ function buildGenerationContext(options: GenerateOptions): string[] {
 		[
 			"Authoring requirements:",
 			"- Write a TypeScript .piper.ts workflow file at the target path.",
-			'- Import workflow builders from "@beyland/piper".',
-			"- Export a default task tree or a default function returning a task tree.",
-			"- Use the current builder API: workflow, task, parallel, protect, recover, artifact, and runtimeValue.",
-			"- Do not use a hidden autonomous loop or dynamically mutate Piper's runtime task tree.",
-			"- Prefer explicit, inspectable tasks that can be reviewed before execution.",
+			'- Import loop builders from "@beyland/piper".',
+			"- Export a default loop tree or a default function returning a loop tree.",
+			"- Use the current meta-harness API: loop, agent, step, evaluate, repeat, parallel, compare, gate, policy, artifact, and runtimeValue.",
+			"- Prefer explicit, inspectable agent loops with artifacts, evaluators, feedback, gates, and stop conditions.",
 			"- Use harness names that Piper can run, such as copilot, pi, or mock.",
 		].join("\n"),
 		[
-			"Example workflow:",
-			'import { artifact, task, workflow } from "@beyland/piper";',
+			"Example loop:",
+			'import { agent, artifact, loop, step } from "@beyland/piper";',
 			"",
 			'const plan = artifact("plan");',
 			"",
-			"export default workflow(",
-			'\ttask({ goal: "Create a plan", harness: "copilot", artifact: plan }),',
-			'\ttask({ goal: "Implement the plan", harness: "copilot", context: [plan.value()] }),',
+			"export default loop(",
+			'\t{ objective: "Plan and implement", agents: [agent("planner", { harness: "copilot" })] },',
+			'\tstep({ role: "planner", goal: "Create a plan", produces: plan }),',
+			'\tstep({ harness: "copilot", goal: "Implement the plan", context: [plan] }),',
 			");",
 		].join("\n"),
 		"Additional examples live in the repository's examples/ directory when available.",
@@ -466,7 +465,7 @@ function installCancellationHandlers(params: {
 }
 
 async function executeTaskTree(params: {
-	taskTree: TaskNode;
+	taskTree: ConcreteLoopNode;
 	workspacePath: string;
 	hooks: RuntimeHooks;
 	cliOptions: RunCliOptions;
@@ -521,7 +520,7 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 		if (parsed.kind === "generate") {
 			await mkdir(dirname(parsed.outputPath), { recursive: true });
 			await executeTaskTree({
-				taskTree: task({
+				taskTree: step({
 					goal: buildGenerationGoal(parsed),
 					harness: parsed.harness,
 					context: buildGenerationContext(parsed),
