@@ -1,4 +1,14 @@
-import { agent, artifact, evaluate, feedback, gate, loop, parallel, policy, step } from "@beyland/piper";
+import {
+	agent,
+	artifact,
+	evaluate,
+	feedback,
+	gate,
+	loop,
+	parallel,
+	policy,
+	step,
+} from "@beyland/piper";
 
 const productIntent = artifact("product-intent", "brief");
 const interactionAudit = artifact("interaction-audit", "ux-review");
@@ -19,7 +29,8 @@ export default function uxFeaturePrototypeLoop() {
 				}),
 				agent("product partner", {
 					harness: "copilot",
-					instructions: "Clarify user goals, constraints, and success criteria before implementation.",
+					instructions:
+						"Clarify user goals, constraints, and success criteria before implementation.",
 				}),
 			],
 		},
@@ -91,7 +102,8 @@ export default function uxFeaturePrototypeLoop() {
 			name: "handoff captures prototype gaps",
 			using: async ({ readArtifact }) =>
 				(await readArtifact("ux-handoff-notes")).toLowerCase().includes("gap"),
-			feedback: "Add known gaps and intentional shortcuts so reviewers can distinguish prototype debt from bugs.",
+			feedback:
+				"Add known gaps and intentional shortcuts so reviewers can distinguish prototype debt from bugs.",
 		}),
 	);
 }
