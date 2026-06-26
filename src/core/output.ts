@@ -56,10 +56,16 @@ export function getArtifactName(artifact: string | Artifact): string {
 	return typeof artifact === "string" ? artifact : artifact.name;
 }
 
-export function artifact<Name extends string, Type extends string = "artifact">(
+export function artifact<Name extends string>(name: Name): Artifact<Name, "artifact">;
+export function artifact<Name extends string, Type extends string>(
 	name: Name,
-	type = "artifact" as Type,
-): Artifact<Name, Type> {
+	type: Type,
+): Artifact<Name, Type>;
+export function artifact<Name extends string, Type extends string>(
+	name: Name,
+	type?: Type,
+): Artifact<Name, Type | "artifact"> {
+	const artifactType = type ?? "artifact";
 	const value = createRuntimeValue(
 		`artifact value(${name})`,
 		(context) => context.readArtifact(name),
@@ -74,11 +80,11 @@ export function artifact<Name extends string, Type extends string = "artifact">(
 	return {
 		kind: "artifact",
 		name,
-		type,
+		type: artifactType,
 		value: () => value,
 		result: () => result,
 		[ARTIFACT_MARKER]: true,
-	} as InternalArtifact<Name, Type>;
+	} as InternalArtifact<Name, Type | "artifact">;
 }
 
 export function runtimeValue<T>(

@@ -11,6 +11,7 @@ import { normalizeTree } from "../core/node-utils.js";
 import { getArtifactName, isArtifact, isRuntimeValue } from "../core/output.js";
 import type {
 	ArtifactStorageOptions,
+	ArtifactTarget,
 	ConcreteLoopNode,
 	ContextValue,
 	EvaluationResult,
@@ -202,8 +203,11 @@ function collectArtifactDeclarations(node: ConcreteLoopNode): string[] {
 	const visit = (current: ConcreteLoopNode): void => {
 		switch (current.kind) {
 			case "step":
-				if (current.props.produces ?? current.props.artifact) {
-					names.push(getArtifactName((current.props.produces ?? current.props.artifact)!));
+				{
+					const artifactName = getStepArtifactName(current.props);
+					if (artifactName) {
+						names.push(artifactName);
+					}
 				}
 				return;
 			case "compare":
@@ -259,6 +263,21 @@ function createRunId(): string {
 
 function attemptLabel(count: number): string {
 	return `${count} ${count === 1 ? "attempt" : "attempts"}`;
+}
+
+function getStepArtifactTarget(props: {
+	produces?: ArtifactTarget;
+	artifact?: ArtifactTarget;
+}): ArtifactTarget | undefined {
+	return props.produces ?? props.artifact;
+}
+
+function getStepArtifactName(props: {
+	produces?: ArtifactTarget;
+	artifact?: ArtifactTarget;
+}): string | undefined {
+	const target = getStepArtifactTarget(props);
+	return target ? getArtifactName(target) : undefined;
 }
 
 class EvaluationFailure extends Error {
@@ -729,8 +748,11 @@ export class PiperOrchestrator {
 					continue;
 				}
 
-				if (node.props.produces ?? node.props.artifact) {
-					this.artifacts.fail(getArtifactName((node.props.produces ?? node.props.artifact)!));
+				{
+					const artifactName = getStepArtifactName(node.props);
+					if (artifactName) {
+						this.artifacts.fail(artifactName);
+					}
 				}
 
 				this.failedSteps += 1;
@@ -778,8 +800,11 @@ export class PiperOrchestrator {
 					retryable: false,
 				};
 
-				if (node.props.produces ?? node.props.artifact) {
-					this.artifacts.fail(getArtifactName((node.props.produces ?? node.props.artifact)!));
+				{
+					const artifactName = getStepArtifactName(node.props);
+					if (artifactName) {
+						this.artifacts.fail(artifactName);
+					}
 				}
 
 				this.failedSteps += 1;
@@ -795,8 +820,9 @@ export class PiperOrchestrator {
 				throw error;
 			}
 
-			if (node.props.produces ?? node.props.artifact) {
-				this.artifacts.set(getArtifactName((node.props.produces ?? node.props.artifact)!), result);
+			const artifactName = getStepArtifactName(node.props);
+			if (artifactName) {
+				this.artifacts.set(artifactName, result);
 				await this.persistOutputs();
 			}
 
