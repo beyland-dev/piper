@@ -170,7 +170,9 @@ Possible first-party block surfaces:
 - `block(name, builder)` — names a reusable subgraph for previewing, tracing, docs, and reuse
 - `sequence(...children)` — groups ordered work without creating a full recipe
 - `fanOut({ from, into, using })` — maps one artifact into parallel downstream
-  slices, like "turn this plan into API, UI, test, and docs work at the same time"
+  slices, like "turn this plan into API, UI, test, and docs work at the same
+  time." `from` names the source artifact, `into` names the destination slices,
+  and `using` describes how each slice is produced.
 - `repairUntil({ command | check, attempts }, child)` — wraps implementation plus evaluator feedback
 - `reviewBoundary({ protectedFiles, reviewers }, child)` — adds policy and review gates around risky work
 - `handoff({ from, to, artifact, instructions })` — makes agent-to-agent transfer explicit
