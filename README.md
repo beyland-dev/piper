@@ -6,8 +6,12 @@ It does not replace Copilot, Claude, Codex, Pi, Cursor, or other agents. It coor
 
 > Design loops, not prompts.
 
-Piper gives coding-agent work the structure application frameworks give UI:
-orchestration, state, artifacts, gates, retries, and handoffs.
+Piper aims to give coding-agent work the structure that meta-frameworks give web
+applications. React provides component primitives; Next.js and Remix add the
+application harness around those primitives: routing, data loading, mutation
+flows, deployment assumptions, and conventions for how work moves through the
+system. Piper plays a similar role for agents by providing orchestration, state,
+artifacts, quality gates, retries, and handoffs.
 
 ## Install
 
@@ -92,16 +96,84 @@ Piper ships high-level recipes for common agent systems:
 
 Recipes are plain loop builders, so they can be composed with lower-level primitives.
 
-## Composition
+## Composition and proposed blocks
 
-Piper programs can mix three layers:
+Piper should support three levels of composition:
 
-1. Core primitives such as `step`, `parallel`, `repeat`, `policy`, and `evaluate`
-2. Reusable blocks that package common orchestration patterns for your team
-3. High-level recipes for common end-to-end loops
+1. **Core primitives** such as `step`, `parallel`, `repeat`, `policy`, and `evaluate`
+2. **Blocks** that package reusable orchestration patterns without hiding control flow
+3. **Recipes** that assemble full end-to-end loops for common workflows
 
-See `examples/composition-blocks.piper.ts` for a compact example of building
-team-specific blocks above the core primitives and composing them into one loop.
+Today, teams can define blocks as normal TypeScript functions. See
+`examples/composition-blocks.piper.ts` for that pattern. A future blocks API could
+make those patterns first-class:
+
+```ts
+import { artifact, block, evaluate, loop, parallel, repeat, step } from "@beyland/piper";
+
+const plan = artifact("plan", "plan");
+const apiChange = artifact("api-change", "implementation");
+const uiChange = artifact("ui-change", "implementation");
+
+const sharedPlan = block("sharedPlan", ({ goal, output }) =>
+	step({
+		role: "planner",
+		goal,
+		produces: output,
+	}),
+);
+
+const testRepair = block("testRepair", ({ command, children }) =>
+	repeat(
+		{ maxAttempts: 3, until: [command] },
+		children,
+		evaluate({
+			name: "tests pass",
+			using: command,
+			feedback: "Revise only the changes from this loop.",
+		}),
+	),
+);
+
+export default loop(
+	{ objective: "Improve checkout reliability" },
+	sharedPlan({
+		goal: "Plan API and UI slices",
+		output: plan,
+	}),
+	testRepair({
+		command: "pnpm test -- checkout",
+		children: parallel(
+			step({
+				role: "implementer",
+				goal: "Implement the API slice",
+				context: [plan],
+				produces: apiChange,
+			}),
+			step({
+				role: "implementer",
+				goal: "Implement the UI slice",
+				context: [plan],
+				produces: uiChange,
+			}),
+		),
+	}),
+);
+```
+
+Possible first-party block surfaces:
+
+- `block(name, builder)` — names a reusable subgraph for previewing, tracing, docs, and reuse
+- `sequence(...children)` — groups ordered work without creating a full recipe
+- `branch({ from, into, using })` — maps one artifact into parallel downstream slices
+- `repairUntil({ command | check, attempts }, child)` — wraps implementation plus evaluator feedback
+- `reviewBoundary({ protectedFiles, reviewers }, child)` — adds policy and review gates around risky work
+- `handoff({ from, to, artifact, instructions })` — makes agent-to-agent transfer explicit
+- `bundle({ artifacts, summary })` — packages multiple outputs into a named reviewable artifact
+
+Blocks should remain transparent: they compile to the same loop tree as core
+primitives, preserve artifacts and policies, and can be previewed or inlined by
+the CLI.
 
 ## Run with the CLI
 
