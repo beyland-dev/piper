@@ -2,16 +2,7 @@
 
 Piper is a meta-harness for designing loops that prompt coding agents.
 
-It does not replace Copilot, Claude, Codex, Pi, Cursor, or other agents. It coordinates them through explicit roles, prompts, artifacts, feedback, evaluators, policies, retries, gates, and stopping conditions.
-
-> Design loops, not prompts.
-
-Piper aims to give coding-agent work the structure that meta-frameworks give web
-applications. React provides component primitives; Next.js and Remix add the
-application harness around those primitives: routing, data loading, mutation
-flows, deployment assumptions, and conventions for how work moves through the
-system. Piper plays a similar role for agents by providing orchestration, state,
-artifacts, quality gates, retries, and handoffs.
+It does not replace Pi, Claude, Codex, Copilot, Cursor, or other agents. It coordinates them through explicit roles, prompts, artifacts, feedback, evaluators, policies, retries, gates, and stopping conditions.
 
 ## Install
 
@@ -26,6 +17,18 @@ The package provides:
 2. A `piper` CLI for running, previewing, generating, and inspecting loop files
 
 ## At a glance
+
+Piper aims to give coding-agent work the structure that meta-frameworks give web
+applications. 
+
+In the same way Svelte provides reactive rendering primitives and SvelteKit adds the
+application harness around those primitives (routing, data loading, mutation
+flows, deployment assumptions, and conventions for how work moves through the
+system), Piper plays a similar role for coding agents by providing orchestration, state,
+artifacts, quality gates, retries, and handoffs.
+
+In a `filename.piper.ts` file, you can create declarative, structured, reproducible loops
+that define agent based workflows.
 
 ```ts
 import { agent, artifact, evaluate, loop, repeat, step } from "@beyland/piper";
