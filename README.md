@@ -2,7 +2,7 @@
 
 Piper is a meta-harness for designing loops that prompt coding agents.
 
-It does not replace Pi, Claude, Codex, Copilot, Cursor, or other agents. It coordinates them through explicit roles, prompts, artifacts, feedback, evaluators, policies, retries, gates, and stopping conditions.
+It does not replace Pi, Claude, Codex, Copilot, Cursor, or other coding agent harnesses. It coordinates them through explicit roles, prompts, artifacts, feedback, evaluators, policies, retries, gates, and stopping conditions.
 
 ## Install
 
