@@ -18,8 +18,7 @@ The package provides:
 
 ## At a glance
 
-Piper aims to give coding-agent work the structure that meta-frameworks give web
-applications. 
+Piper aims to give coding-agent work the structure that meta-frameworks give web applications.
 
 In the same way Svelte provides reactive rendering primitives and SvelteKit adds the
 application harness around those primitives (routing, data loading, mutation
