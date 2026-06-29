@@ -27,6 +27,7 @@ import type {
 	StepHandle,
 	StepResult,
 	LoopTree,
+	RuntimeValue,
 } from "../core/types.js";
 import { runCommand } from "../utils/process.js";
 import { captureGitSnapshot, enforceProtectedFiles } from "./constraint-checker.js";
@@ -492,26 +493,49 @@ export class PiperOrchestrator {
 		};
 	}
 
-	private async resolveContext(values: ContextValue[] = []): Promise<string[]> {
+	private recordContextRuntimeValue(info: StepAttemptInfo, value: RuntimeValue<unknown>): void {
+		this.recordEvent({
+			type: "context:value",
+			message: `Resolving runtime value: ${value.description}`,
+			nodeId: info.id,
+			metadata: {
+				attempt: info.attempt,
+				description: value.description,
+				dependencies: value.dependencies,
+			},
+		});
+	}
+
+	private async resolveContextValue(
+		value: ContextValue,
+		context: RuntimeValueContext,
+		info: StepAttemptInfo,
+	): Promise<string> {
+		if (typeof value === "string") {
+			return value;
+		}
+
+		if (isArtifact(value)) {
+			const artifactValue = value.value();
+			this.recordContextRuntimeValue(info, artifactValue);
+			return artifactValue.resolve(context);
+		}
+
+		if (isRuntimeValue(value)) {
+			this.recordContextRuntimeValue(info, value);
+			return value.resolve(context);
+		}
+
+		throw new Error("Encountered an invalid context value.");
+	}
+
+	private async resolveContext(
+		info: StepAttemptInfo,
+		values: ContextValue[] = [],
+	): Promise<string[]> {
 		const context = this.createRuntimeValueContext();
 		const resolved = await this.cancelable(
-			Promise.all(
-				values.map(async (value) => {
-					if (typeof value === "string") {
-						return value;
-					}
-
-					if (isArtifact(value)) {
-						return value.value().resolve(context);
-					}
-
-					if (isRuntimeValue(value)) {
-						return value.resolve(context);
-					}
-
-					throw new Error("Encountered an invalid context value.");
-				}),
-			),
+			Promise.all(values.map((value) => this.resolveContextValue(value, context, info))),
 		);
 
 		if (this.feedback.length === 0) {
@@ -680,19 +704,53 @@ export class PiperOrchestrator {
 			});
 			this.hooks.stepStarted(info);
 
-			const resolvedContext = await this.resolveContext([
-				...(inlineAgent?.instructions ? [`Role instructions:\n${inlineAgent.instructions}`] : []),
-				...(registeredAgent?.instructions
-					? [`Role instructions:\n${registeredAgent.instructions}`]
-					: []),
-				...(node.props.instructions ? [`Step instructions:\n${node.props.instructions}`] : []),
-				...(node.props.acceptanceCriteria?.length
-					? [
-							`Acceptance criteria:\n${node.props.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}`,
-						]
-					: []),
-				...(node.props.context ?? []),
-			]);
+			this.recordEvent({
+				type: "context:start",
+				message: `Resolving runtime context for ${stepId}...`,
+				nodeId: stepId,
+				metadata: { attempt, role: roleName, harness: harnessName },
+			});
+			let resolvedContext: string[];
+			try {
+				resolvedContext = await this.resolveContext(info, [
+					...(inlineAgent?.instructions ? [`Role instructions:\n${inlineAgent.instructions}`] : []),
+					...(registeredAgent?.instructions
+						? [`Role instructions:\n${registeredAgent.instructions}`]
+						: []),
+					...(node.props.instructions ? [`Step instructions:\n${node.props.instructions}`] : []),
+					...(node.props.acceptanceCriteria?.length
+						? [
+								`Acceptance criteria:\n${node.props.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}`,
+							]
+						: []),
+					...(node.props.context ?? []),
+				]);
+			} catch (error) {
+				if (isPiperCancellationError(error)) {
+					this.recordEvent({
+						type: "context:cancel",
+						message: `Cancelled while resolving runtime context for ${stepId}.`,
+						nodeId: stepId,
+						metadata: { attempt, role: roleName, harness: harnessName },
+					});
+					throw error;
+				}
+
+				const stepError = toStepError(error, "Failed to resolve runtime context.");
+				this.recordEvent({
+					type: "context:fail",
+					message: `Failed to resolve runtime context for ${stepId}: ${stepError.message}`,
+					nodeId: stepId,
+					metadata: { attempt, role: roleName, harness: harnessName },
+				});
+				throw error;
+			}
+			this.recordEvent({
+				type: "context:complete",
+				message: `Resolved runtime context for ${stepId}; starting ${harnessName} harness...`,
+				nodeId: stepId,
+				metadata: { attempt, role: roleName, harness: harnessName },
+			});
 
 			if (attempt === 1) {
 				stepHandle = harness.startStep({

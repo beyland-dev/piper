@@ -113,6 +113,14 @@ export class CliReporter implements RuntimeHooks {
 	}
 
 	event(event: RunEvent): void {
+		if (event.type.startsWith("context:")) {
+			const failed = event.type === "context:fail";
+			const writer = failed ? this.errorWriter : this.writer;
+			const style = event.type === "context:fail" ? "red" : "cyan";
+			writer.write(`${this.status("context", style, failed)} ${event.message}\n`);
+			return;
+		}
+
 		if (!this.verbose || event.type !== "feedback") {
 			return;
 		}

@@ -80,7 +80,7 @@ Artifacts persist by default to `~/.piper/runs/<run-id>/artifacts.json`. Each ru
 - `compare` — run branches and produce a decision artifact
 - `gate` — approval checkpoint
 - `policy` — guardrails for constraints and protected files
-- `state` / `runtimeValue` — structured runtime data
+- `state` / `runtimeValue` — structured runtime data; step context resolution is reported before the harness starts so expensive runtime values are visible and cancellable
 
 ## Recipe API
 

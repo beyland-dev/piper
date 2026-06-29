@@ -41,10 +41,11 @@ From the CLI:
 2. `esbuild` bundles the file and aliases `@beyland/piper` to the local runtime.
 3. The module's default export returns a loop tree.
 4. `PiperOrchestrator` walks the loop tree.
-5. Step nodes call harness adapters.
-6. Harness adapters launch the configured coding-agent command or mock.
-7. The runtime records progress, artifacts, events, feedback, retries, and summaries.
-8. Artifacts and run metadata are persisted to `~/.piper/runs/<run-id>/artifacts.json` by default.
+5. Step nodes prepare a harness attempt.
+6. Before each harness attempt starts, Piper resolves step context and emits `context:start`, `context:value`, and `context:complete` runtime events. If preparation is cancelled or fails, it emits `context:cancel` or `context:fail` instead of starting the harness.
+7. Harness adapters launch the configured coding-agent command or mock after context is ready.
+8. The runtime records progress, artifacts, events, feedback, retries, and summaries.
+9. Artifacts and run metadata are persisted to `~/.piper/runs/<run-id>/artifacts.json` by default.
 
 Generation is still an authoring helper: Piper asks a harness to write a `.piper.ts` file, then validates or executes that explicit file only when requested.
 
@@ -52,10 +53,11 @@ Generation is still an authoring helper: Piper asks a harness to write a `.piper
 
 Harnesses implement this contract:
 
-1. `startStep` receives goal, context, constraints, protected files, workspace path, and optional model.
-2. The harness streams progress.
-3. It resolves with output, modified files, and metadata, or rejects with a step error.
-4. It supports retry and cancel.
+1. Piper resolves strings, artifacts, and `runtimeValue` context before calling `startStep`.
+2. `startStep` receives goal, resolved context, constraints, protected files, workspace path, and optional model.
+3. The harness streams progress.
+4. It resolves with output, modified files, and metadata, or rejects with a step error.
+5. It supports retry and cancel.
 
 Piper does not know how Copilot, Pi, Claude, Codex, or another agent thinks. It only coordinates the surrounding loop.
 

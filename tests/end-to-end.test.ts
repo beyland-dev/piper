@@ -98,7 +98,11 @@ describe("CLI end-to-end", () => {
 		expect(stderr).toBe("");
 		expect(stdout).toContain("[run] Plan");
 		expect(stdout).toContain("      id=step-1  harness=mock  attempt=1");
-		expect(stdout).toContain("\n\n      mock attempt 1 started");
+		expect(stdout).toContain("[context] Resolving runtime context for step-1...");
+		expect(stdout).toContain(
+			"[context] Resolved runtime context for step-1; starting mock harness...",
+		);
+		expect(stdout).toContain("      mock attempt 1 started");
 		expect(stdout).toContain("mock attempt 1 completed\n\n[done] Successfully completed step-1");
 		expect(stdout).not.toContain("  | mock attempt 1 started");
 		expect(stdout).not.toContain("[step-1] mock attempt 1 started");
