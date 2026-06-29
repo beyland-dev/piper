@@ -1,6 +1,6 @@
 {
 	"name": "@beyland/piper",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "A meta-harness for designing durable loops that prompt coding agents",
 	"keywords": [
 		"agent-loops",
