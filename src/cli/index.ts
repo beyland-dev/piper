@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { constants as fsConstants, existsSync, realpathSync } from "node:fs";
+import { constants as fsConstants, existsSync, readFileSync, realpathSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +47,9 @@ type CliOptions =
 	| {
 			kind: "help";
 	  }
+	| {
+			kind: "version";
+	  }
 	| ({
 			kind: "run";
 	  } & RunOptions)
@@ -81,6 +84,7 @@ Options:
   --save-only             Save the generated loop without validating or executing it.
   --execute               Execute the generated loop after validation.
   --dry-run-generated     Print the generated loop tree after validation without executing it.
+  --version               Show the Piper CLI version.
   -h, --help              Show this help information.
 
 Examples:
@@ -105,6 +109,22 @@ Examples:
 function isLoopPathArgument(value: string, cwd: string): boolean {
 	const resolved = resolve(cwd, value);
 	return existsSync(resolved) || /\.(?:piper\.)?(?:[cm]?ts|[cm]?js)$/.test(value);
+}
+
+function readPackageVersion(): string {
+	const contents = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
+	const parsed: unknown = JSON.parse(contents);
+
+	if (
+		typeof parsed !== "object" ||
+		parsed === null ||
+		!("version" in parsed) ||
+		typeof parsed.version !== "string"
+	) {
+		throw new Error("Package metadata is missing a version.");
+	}
+
+	return parsed.version;
 }
 
 function parseGenerateArguments(prompt: string, values: string[], cwd: string): CliOptions {
@@ -174,6 +194,10 @@ function parseGenerateArguments(prompt: string, values: string[], cwd: string): 
 			return { kind: "help" };
 		}
 
+		if (current === "--version") {
+			return { kind: "version" };
+		}
+
 		throw new Error(`Unknown argument: ${current}`);
 	}
 
@@ -221,6 +245,10 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 		return { kind: "help" };
 	}
 
+	if (firstArg === "--version") {
+		return { kind: "version" };
+	}
+
 	if (!isLoopPathArgument(firstArg, cwd)) {
 		return parseGenerateArguments(firstArg, values, cwd);
 	}
@@ -263,6 +291,10 @@ function parseArguments(argv: string[], cwd: string): CliOptions {
 
 		if (current === "-h" || current === "--help") {
 			return { kind: "help" };
+		}
+
+		if (current === "--version") {
+			return { kind: "version" };
 		}
 
 		throw new Error(`Unknown argument: ${current}`);
@@ -508,6 +540,11 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
 
 		if (parsed.kind === "help") {
 			(options.stdout ?? process.stdout).write(`${HELP_TEXT}\n`);
+			return 0;
+		}
+
+		if (parsed.kind === "version") {
+			(options.stdout ?? process.stdout).write(`${readPackageVersion()}\n`);
 			return 0;
 		}
 

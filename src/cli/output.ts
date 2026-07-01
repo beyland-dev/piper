@@ -117,7 +117,8 @@ export class CliReporter implements RuntimeHooks {
 			const failed = event.type === "context:fail";
 			const writer = failed ? this.errorWriter : this.writer;
 			const style = event.type === "context:fail" ? "red" : "cyan";
-			writer.write(`${this.status("context", style, failed)} ${event.message}\n`);
+			const suffix = event.type === "context:complete" ? "\n\n" : "\n";
+			writer.write(`${this.status("context", style, failed)} ${event.message}${suffix}`);
 			return;
 		}
 

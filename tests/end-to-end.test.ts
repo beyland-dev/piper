@@ -102,6 +102,9 @@ describe("CLI end-to-end", () => {
 		expect(stdout).toContain(
 			"[context] Resolved runtime context for step-1; starting mock harness...",
 		);
+		expect(stdout).toContain(
+			"[context] Resolved runtime context for step-1; starting mock harness...\n\n      mock attempt 1 started",
+		);
 		expect(stdout).toContain("      mock attempt 1 started");
 		expect(stdout).toContain("mock attempt 1 completed\n\n[done] Successfully completed step-1");
 		expect(stdout).not.toContain("  | mock attempt 1 started");
@@ -421,11 +424,39 @@ describe("CLI end-to-end", () => {
 		expect(stdout).toContain("--workspace <path>");
 		expect(stdout).toContain("--quiet");
 		expect(stdout).toContain("--save-only");
+		expect(stdout).toContain("--version");
 		expect(stdout).toContain("--help");
 		expect(stdout).toContain("Examples:");
 		expect(stdout).toContain('piper "Fix the failing tests"');
 		expect(stdout).toContain("piper examples/simple-loop.piper.ts --dry-run");
 		expect(stdout).toContain("pnpm exec piper examples/simple-loop.piper.ts --workspace .");
+	});
+
+	it("prints the package version", async () => {
+		const packageJson = JSON.parse(await readFile("package.json", "utf8")) as unknown;
+		if (
+			typeof packageJson !== "object" ||
+			packageJson === null ||
+			!("version" in packageJson) ||
+			typeof packageJson.version !== "string"
+		) {
+			throw new Error("Package metadata is missing a version.");
+		}
+
+		let stdout = "";
+		let stderr = "";
+		const exitCode = await runCli(["--version"], {
+			stdout: createBufferStream((chunk) => {
+				stdout += chunk;
+			}),
+			stderr: createBufferStream((chunk) => {
+				stderr += chunk;
+			}),
+		});
+
+		expect(exitCode).toBe(0);
+		expect(stderr).toBe("");
+		expect(stdout).toBe(`${packageJson.version}\n`);
 	});
 
 	it("prints the compiled loop module", async () => {

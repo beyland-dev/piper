@@ -119,4 +119,35 @@ describe("CliReporter", () => {
 
 		expect(stdout.read()).toBe("[info] Dry run\n");
 	});
+
+	it("separates completed context output from harness progress", () => {
+		delete process.env.FORCE_COLOR;
+		delete process.env.NO_COLOR;
+		const stdout = createBufferStream();
+		const reporter = new CliReporter({ verbose: true, stdout: stdout.stream });
+		const stepInfo = { id: "step-2", goal: "Research", harness: "copilot", attempt: 1 };
+
+		reporter.event({
+			type: "context:start",
+			message: "Resolving runtime context for step-2...",
+			nodeId: "step-2",
+			timestamp: 1,
+		});
+		reporter.event({
+			type: "context:complete",
+			message: "Resolved runtime context for step-2; starting copilot harness...",
+			nodeId: "step-2",
+			timestamp: 2,
+		});
+		reporter.stepProgress(stepInfo, {
+			message: "agent line",
+			attempt: 1,
+			timestamp: 3,
+			stream: "stdout",
+		});
+
+		expect(stdout.read()).toBe(
+			"[context] Resolving runtime context for step-2...\n[context] Resolved runtime context for step-2; starting copilot harness...\n\n      agent line\n",
+		);
+	});
 });
